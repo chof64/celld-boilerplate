@@ -269,6 +269,42 @@ References: [Roll out a node](https://github.com/denoland/celld/blob/main/docs/R
 
 ---
 
+## Drain a node
+
+For a multi-node fleet, you can explicitly start a graceful drain through the private operator API:
+
+```bash
+curl -X POST http://celld-a.internal:8081/shutdown
+```
+
+Replace `celld-a.internal` with the node's private `CELLD_ADVERTISE` hostname/address.
+
+This starts the graceful ownership handoff. The node becomes unhealthy on:
+
+```text
+/.well-known/celld/health
+```
+
+so a health-aware load balancer stops routing new public requests to it.
+
+The operator API is unauthenticated and must only be reachable on the trusted private network.
+
+### Preferred platform command
+
+SIGTERM starts the same graceful shutdown/handoff, so in normal container operations it is also valid—and often simpler—to use the platform's ordinary stop command:
+
+```bash
+docker stop <celld-container>
+```
+
+or the equivalent stop/redeploy action in your orchestrator.
+
+For a **single-node** setup, the internal listener is bound to `127.0.0.1` inside the container, so the normal platform stop/SIGTERM path is the recommended drain command.
+
+Reference: [Celld operator API and graceful shutdown](https://github.com/denoland/celld/blob/main/docs/README.md#shut-down-and-roll-out-a-node)
+
+---
+
 ## Rolling update
 
 Use when the old and new Celld releases are compatible in the same live fleet.
@@ -286,8 +322,12 @@ A new   B new   C new
 For each node:
 
 1. Confirm the remaining nodes have enough capacity.
-2. Stop the node gracefully with SIGTERM.
-3. Let Celld finish handoff.
+2. Drain the node:
+   ```bash
+   curl -X POST http://celld-a.internal:8081/shutdown
+   ```
+   or stop it through the orchestrator, which sends SIGTERM.
+3. Let Celld finish handoff and exit.
 4. Replace the pinned Celld image.
 5. Reuse the same persistent `CELLD_WATCH`.
 6. Start the replacement.
@@ -507,7 +547,8 @@ Reference: [Diagnose a fleet](https://github.com/denoland/celld/blob/main/docs/R
 - Multi-node: `CELLD_DURABILITY=fleet`.
 - Deploy the application once per fleet.
 - Serialize application deploys.
-- Use graceful SIGTERM shutdown.
+- Drain with `POST /shutdown` on the private listener or use the platform's normal SIGTERM stop.
+- Use `POST /shutdown` only from the trusted private network.
 - Rolling upgrade only when releases are compatible.
 - Otherwise stop the old fleet before starting the new version.
 
