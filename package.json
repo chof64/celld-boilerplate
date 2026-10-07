@@ -1,0 +1,31 @@
+{
+  "name": "celld-boilerplate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.9.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev:celld": "tsx celld/scripts/dev.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm test",
+    "deploy": "tsx celld/scripts/deploy.ts"
+  },
+  "dependencies": {
+    "@hono/standard-validator": "^0.4.0",
+    "hono": "^4.13.13",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261007.1",
+    "@types/node": "^26.6.4",
+    "dotenv": "^18.0.6",
+    "jsonc-parser": "^3.3.1",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
