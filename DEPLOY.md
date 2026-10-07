@@ -30,16 +30,18 @@ Every node needs:
 - private Celld listener on `:8081`,
 - graceful shutdown time.
 
-This guide assumes containers do **not** use host networking:
+This guide assumes containers do **not** use host networking.
+
+The public Worker listener binds inside the container:
 
 ```dotenv
 CELLD_ADDR=0.0.0.0:8080
-CELLD_INTERNAL_ADDR=0.0.0.0:8081
 ```
 
-`0.0.0.0` is only the bind address inside the container.
+The internal listener depends on the topology:
 
-Peers use `CELLD_ADVERTISE`.
+- **single node:** bind to loopback with `127.0.0.1:8081`; no advertise address is needed,
+- **multi-node:** bind to `0.0.0.0:8081` and set a private peer-reachable `CELLD_ADVERTISE`.
 
 Leave `CELLD_NODE` unset. Celld generates the node-session ID automatically.
 
@@ -58,7 +60,7 @@ Ingress / TLS
    |
 Celld
 ├─ :8080 public
-├─ :8081 private
+├─ 127.0.0.1:8081 internal only
 ├─ persistent CELLD_WATCH
 └─ fleet bucket
 ```
@@ -75,14 +77,13 @@ AWS_SECRET_ACCESS_KEY=...
 # AWS_SESSION_TOKEN=...
 
 CELLD_ADDR=0.0.0.0:8080
-CELLD_INTERNAL_ADDR=0.0.0.0:8081
-CELLD_ADVERTISE=celld.internal:8081
+CELLD_INTERNAL_ADDR=127.0.0.1:8081
 
 CELLD_WATCH=/var/lib/celld/state
 CELLD_DURABILITY=bucket
 ```
 
-`CELLD_ADVERTISE` must resolve to the private `:8081` listener.
+No `CELLD_ADVERTISE` is needed because no peer node needs to reach the internal listener. Binding it to loopback also keeps the operator surface inaccessible from the container network.
 
 For a deliberate single-node deployment use:
 
@@ -96,7 +97,7 @@ so acknowledged durable writes wait for the object store.
 
 - Persist `/var/lib/celld` or whatever contains `CELLD_WATCH`.
 - Publish only the public Worker listener through ingress.
-- Keep `:8081` private.
+- Keep the internal listener on `127.0.0.1:8081`; do not publish it from the container.
 - Give the container at least ~90 seconds to stop gracefully with current defaults.
 - Supply credentials through the infrastructure/secrets manager.
 
@@ -498,8 +499,9 @@ Reference: [Diagnose a fleet](https://github.com/denoland/celld/blob/main/docs/R
 
 - Pin the Celld version/image.
 - Persist `CELLD_WATCH`.
-- Keep `:8081` private.
-- Use `0.0.0.0` as the container bind, never as `CELLD_ADVERTISE`.
+- Single node: internal listener `127.0.0.1:8081`, no `CELLD_ADVERTISE`.
+- Multi-node: internal listener `0.0.0.0:8081` plus a private `CELLD_ADVERTISE`.
+- Never use `0.0.0.0` as `CELLD_ADVERTISE`.
 - Leave `CELLD_NODE` unset by default.
 - Single node: `CELLD_DURABILITY=bucket`.
 - Multi-node: `CELLD_DURABILITY=fleet`.
