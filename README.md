@@ -13,7 +13,7 @@ The project keeps the public API simple:
 - **Zod + Standard Schema** validate untrusted HTTP input.
 - **Native `celld dev` and `celld deploy`** remain visible rather than being hidden behind a custom framework.
 
-For the complete design and the reasoning behind it, read [ARCHITECTURE.md](./ARCHITECTURE.md).
+For the complete design and the reasoning behind it, read [ARCHITECTURE.md](./ARCHITECTURE.md). For production node setup, application deployment, scaling, and Celld runtime upgrades, read [DEPLOY.md](./DEPLOY.md).
 
 ## Mental model
 
