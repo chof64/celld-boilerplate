@@ -7,7 +7,7 @@ The goal is a small, opinionated Celld application shape with sensible defaults 
 ## 1. Principles
 
 1. **Celld remains the runtime abstraction.** Use Workers, Durable Objects, Queues, Workflows, Cron, KV, D1, R2, service bindings, and other Celld-supported surfaces directly.
-2. **Hono owns the public HTTP boundary.** It handles routing, authentication/authorization context, validation, middleware, errors, and public HTTP/WebSocket URLs.
+2. **Hono owns the public HTTP boundary, with RESTful HTTP as the default client contract.** It handles routing, authentication/authorization context, validation, middleware, errors, and public HTTP/WebSocket URLs.
 3. **Durable Objects own stateful identities.** Use them when one logical entity needs a single consistent owner, durable local state, serialized coordination, alarms, or long-lived connections.
 4. **Prefer native Celld RPC internally.** If a Worker wants to tell a Durable Object to do something, method-style RPC is normally clearer than inventing an internal HTTP endpoint.
 5. **Use Durable Object `fetch()` when HTTP semantics are actually useful.** WebSocket upgrades are the main example.
@@ -114,43 +114,69 @@ env.RIDE.getByName(rideId)
 ride.acceptDriver(driverId)
 ```
 
-The public interface is HTTP. The internal stateful call is Celld RPC.
+The public interface is RESTful HTTP. The internal stateful call is Celld RPC.
 
 This keeps the public API stable even if the internal Durable Object model evolves.
 
-## 5. Hono RPC versus Celld RPC
+## 5. RESTful public API, Celld RPC internally
 
-The word "RPC" appears at two different layers.
-
-### Public: Hono RPC
-
-Hono's typed client provides RPC-style developer experience over normal HTTP/fetch.
+The default public API is RESTful HTTP through Hono.
 
 ```text
-TypeScript web/mobile client
-          |
-          | HTTPS
-          v
-        Hono
+Web / mobile / service client
+            |
+            | HTTPS
+            v
+        Hono REST API
+            |
+            | native Celld RPC when stateful work is needed
+            v
+      Durable Object
 ```
 
-This is appropriate for browser and JavaScript mobile clients because the transport is still standard HTTP.
+Public API design should prefer:
 
-### Internal: Celld RPC
+- resource-oriented URLs,
+- standard HTTP methods,
+- standard HTTP status codes,
+- JSON request/response bodies where applicable,
+- predictable validation and error responses.
 
-A Worker or another runtime component can call a method on a Durable Object stub.
+Examples:
 
 ```text
-Hono route
-    |
-    v
+GET  /api/rooms/:roomId
+PUT  /api/rooms/:roomId/topic
+GET  /api/users/:userId
+POST /api/bookings
+PATCH /api/bookings/:bookingId
+```
+
+Prefer nouns and resource state over RPC-style public procedure names. Domain actions that do not map cleanly to CRUD/resource updates may use an explicit action or subresource endpoint, but that should be the exception rather than the default.
+
+A client does not need Hono-specific packages. Browsers, native mobile applications, third-party systems, and backend services can use any standard HTTP client.
+
+### Optional Hono typed client
+
+TypeScript consumers may use `hono/client` as a compile-time convenience over the same REST endpoints.
+
+That client is optional and must not become the architectural contract or drive route design. The HTTP resources, methods, status codes, and payloads remain the public API.
+
+### Internal Celld RPC
+
+A Worker or another Celld runtime component can call a method on a Durable Object stub.
+
+```text
+Hono REST route
+      |
+      v
 room.setTopic(topic)
-    |
-    v
+      |
+      v
 Room Durable Object
 ```
 
-This RPC is a runtime capability and is not the protocol exposed directly to arbitrary Internet clients.
+This RPC is a runtime capability and is not exposed directly to arbitrary Internet clients.
 
 ## 6. Durable Objects
 
@@ -641,7 +667,7 @@ Use these defaults when adding functionality.
 
 | Need | Default |
 | --- | --- |
-| Public HTTP endpoint | Hono |
+| Public API endpoint | RESTful HTTP through Hono |
 | HTTP validation | Standard Schema + Zod |
 | Internal method-style call to stateful entity | Durable Object RPC |
 | Durable Object HTTP interface | `fetch()` |
@@ -715,4 +741,4 @@ Scheduled ------+
 
 The governing rule is:
 
-> Use Celld primitives directly. Use Hono for the public HTTP boundary. Prefer native RPC for internal stateful calls. Use Durable Object fetch/WebSockets when HTTP semantics are useful. Keep business logic independent of transport. Keep deployment native. Add complexity only when a concrete requirement appears.
+> Use Celld primitives directly. Use RESTful HTTP through Hono for the public API. Prefer native RPC for internal stateful calls. Use Durable Object fetch/WebSockets when HTTP semantics are useful. Keep business logic independent of transport. Keep deployment native. Add complexity only when a concrete requirement appears.
