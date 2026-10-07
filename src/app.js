@@ -20,7 +20,7 @@ roomIdInput.value = roomId;
 roomLabel.textContent = roomId;
 
 function readInitialRoom() {
-  const room = window.location.hash.slice(1).trim();
+  const room = decodeURIComponent(window.location.hash.slice(1)).trim();
   return room || "lobby";
 }
 
@@ -117,18 +117,19 @@ function connectSocket() {
   setConnection("connecting", "Connecting");
 
   const currentRoom = roomId;
-  socket = new WebSocket(socketUrl());
+  const currentSocket = new WebSocket(socketUrl());
+  socket = currentSocket;
 
-  socket.addEventListener("open", () => {
-    if (currentRoom !== roomId) {
-      socket.close();
+  currentSocket.addEventListener("open", () => {
+    if (currentRoom !== roomId || socket !== currentSocket) {
+      currentSocket.close();
       return;
     }
 
     setConnection("connected", "Live");
   });
 
-  socket.addEventListener("message", (event) => {
+  currentSocket.addEventListener("message", (event) => {
     try {
       const payload = JSON.parse(event.data);
 
@@ -140,8 +141,8 @@ function connectSocket() {
     }
   });
 
-  socket.addEventListener("close", () => {
-    if (currentRoom !== roomId) {
+  currentSocket.addEventListener("close", () => {
+    if (currentRoom !== roomId || socket !== currentSocket) {
       return;
     }
 
@@ -149,8 +150,10 @@ function connectSocket() {
     reconnectTimer = window.setTimeout(connectSocket, 1_500);
   });
 
-  socket.addEventListener("error", () => {
-    setConnection("disconnected", "Connection error");
+  currentSocket.addEventListener("error", () => {
+    if (socket === currentSocket) {
+      setConnection("disconnected", "Connection error");
+    }
   });
 }
 
