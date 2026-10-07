@@ -184,4 +184,4 @@ This repository is intentionally not a framework on top of Celld.
 
 It establishes a few conventions, then gets out of the way:
 
-> Use Celld primitives directly. Use Hono for public HTTP. Prefer native RPC for internal stateful calls. Keep business logic independent of transport. Keep deployment native. Add complexity only when a concrete requirement appears.
+> Use Celld primitives directly. Use RESTful HTTP through Hono for the public API. Prefer native RPC for internal stateful calls. Keep business logic independent of transport. Keep deployment native. Add complexity only when a concrete requirement appears.
