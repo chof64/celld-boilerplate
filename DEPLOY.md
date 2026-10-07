@@ -249,6 +249,73 @@ Serialize production deploys so only one writer updates a fleet at a time.
 
 Reference: [Deploy an application](https://github.com/denoland/celld/blob/main/docs/README.md#deploy-an-application)
 
+### GitHub Actions
+
+The boilerplate includes `.github/workflows/deploy.yml`.
+
+It deploys on pushes to `main` and can also be started manually with `workflow_dispatch`. Production runs are serialized with GitHub Actions concurrency so two deploys cannot update the same fleet at the same time.
+
+Create a GitHub Actions secret named:
+
+```text
+ENV_FILE
+```
+
+Prefer storing it on the `production` GitHub Environment. A repository secret with the same name also works.
+
+The secret contains the complete deploy-time `.env` file as newline-separated `KEY=value` pairs. For example:
+
+```dotenv
+CELLD_VERSION=v0.0.1
+
+CELLD_BUCKET=s3://my-celld-fleet
+S3_ENDPOINT=https://ACCOUNT.r2.cloudflarestorage.com
+AWS_REGION=auto
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+
+GREETING=Hello from production
+```
+
+Use the exact Celld release you run in production for `CELLD_VERSION`. If it is omitted, the installer uses its current default release.
+
+The CI secret normally needs:
+
+- Celld CLI version selection such as `CELLD_VERSION`,
+- fleet object-store location and credentials required by `celld deploy`,
+- application variables declared in `celld/env.ts`.
+
+It normally does **not** need node-only settings such as `CELLD_ADDR`, `CELLD_INTERNAL_ADDR`, `CELLD_ADVERTISE`, `CELLD_WATCH`, or `CELLD_DURABILITY`; those belong on the running Celld nodes.
+
+The workflow:
+
+```text
+ENV_FILE secret
+      |
+      v
+    .env
+      |
+      +--> install pinned Celld
+      |
+      +--> pnpm check
+      |
+      +--> pnpm deploy -- --dry-run
+      |
+      +--> pnpm deploy
+```
+
+The deploy wrapper parses `.env` and passes those values to the `celld` process. Only variables explicitly declared in `celld/env.ts` are copied into Worker bindings, so fleet credentials are available to the deploy CLI without being exposed to application code.
+
+The workflow writes `.env` with restrictive file permissions and never intentionally prints its contents. The file is already ignored by Git.
+
+To configure the secret with GitHub CLI from a local production env file:
+
+```bash
+gh secret set ENV_FILE --env production < .env.production
+```
+
+Or add `ENV_FILE` through GitHub repository/environment settings.
+
 ---
 
 # 2. Upgrade Celld
