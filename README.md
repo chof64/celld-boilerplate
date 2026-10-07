@@ -75,19 +75,13 @@ pnpm install
 cp .env.example .env
 ```
 
-Run the frontend and Celld in separate terminals:
-
-```bash
-pnpm dev
-```
+Start Celld, which serves both the SPA and API from one local origin:
 
 ```bash
 pnpm dev:celld
 ```
 
-Open `http://localhost:5173`.
-
-Vite serves the single-page app and proxies `/api/*`, `/health`, and WebSocket upgrades to Celld at `http://127.0.0.1:9876`.
+Open `http://localhost:9876`.
 
 You can also exercise the REST API directly:
 
@@ -107,8 +101,7 @@ In production, Celld serves the same files from `src/` as static assets and send
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm dev` | Run the Vite frontend dev server with API/WebSocket proxying |
-| `pnpm dev:celld` | Generate local Worker vars and run `celld dev .` |
+| `pnpm dev:celld` | Generate local Worker vars and run Celld with the SPA and API |
 | `pnpm typecheck` | Type-check the boilerplate |
 | `pnpm test` | Run tests |
 | `pnpm check` | Run type-checking and tests |
@@ -191,14 +184,14 @@ This boilerplate keeps Celld code under `celld/` and the example frontend under 
 
 The included SPA uses browser-native modules so the same files can be served directly by Celld in production. A real project can replace `src/` with any frontend framework and point the root Wrangler asset directory at that framework's build output.
 
-In a mixed project:
+In a mixed project with a framework-based frontend:
 
 ```text
 pnpm dev          -> frontend framework
 pnpm dev:celld    -> Celld
 ```
 
-When the frontend and API are same-origin in production, configure the frontend dev server to proxy API/WebSocket paths to local Celld rather than adding development-only CORS behavior.
+The included browser-native SPA needs no separate frontend dev server. Celld serves it from `src/` in local development and production. A framework-based frontend can use its own dev server with a proxy for API and WebSocket paths, while its production build can be served by Celld from the configured asset directory.
 
 ## Philosophy
 
