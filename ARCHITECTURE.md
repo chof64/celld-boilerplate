@@ -48,6 +48,50 @@ Zod
 
 OpenAPI is not part of the baseline. It can be added when the application has external/non-TypeScript consumers or formal API-documentation requirements.
 
+### Reference chat application
+
+This repository includes a minimal chat application to exercise the architecture rather than merely describe it.
+
+```text
+                    Browser
+                      |
+          +-----------+-----------+
+          |                       |
+          | REST                  | WebSocket
+          v                       v
+        Hono                    Hono
+          |                       |
+          | native RPC            | stub.fetch()
+          v                       v
+                Room Durable Object
+                  |            |
+                  |            +-- hibernatable WebSockets
+                  |
+                  +-- SQLite message history
+```
+
+The concrete flows are:
+
+```text
+GET /api/rooms/:roomId/messages
+  -> Hono
+  -> Room.listMessages()
+  -> Durable Object SQLite
+
+POST /api/rooms/:roomId/messages
+  -> Hono validation
+  -> Room.sendMessage()
+  -> SQLite INSERT
+  -> broadcast to connected sockets
+
+GET /api/rooms/:roomId/socket
+  -> Hono public route
+  -> Room.fetch(request)
+  -> WebSocket upgrade owned by the Durable Object
+```
+
+This intentionally keeps realtime delivery separate from message mutation. The public write contract remains RESTful, while WebSocket is used only where a long-lived realtime transport is useful.
+
 ## 3. Public and internal boundaries
 
 The normal request path is:
@@ -510,9 +554,23 @@ frontend dev server
 
 This preserves production-like URLs and avoids development-only CORS configuration.
 
-The exact proxy implementation is frontend-framework-specific and is outside this boilerplate.
+The exact proxy implementation is frontend-framework-specific. The reference chat app uses Vite to proxy both REST and WebSocket traffic to local Celld.
 
-## 19. Production deployment
+## 19. Static frontend assets
+
+For the reference SPA, the root Wrangler configuration also declares:
+
+```text
+assets.directory = ./src
+assets.not_found_handling = single-page-application
+assets.run_worker_first = /api/* and /health
+```
+
+Celld's asset layer serves frontend files directly. API and health routes skip asset lookup and run the Worker first. Navigation misses fall back to `index.html`, making the frontend a single-page application.
+
+The reference app is browser-native and therefore needs no production compilation step. Framework-based applications should instead point `assets.directory` at their production build output such as `dist/` or `out/`.
+
+## 29. Production deployment
 
 The stable project command is:
 
@@ -530,7 +588,7 @@ It does not use `wrangler deploy`.
 
 Wrangler describes the application. Celld owns deployment.
 
-## 20. Production Worker variables
+## 29. Production Worker variables
 
 Native `celld deploy` does not read `.dev.vars` into production Worker bindings.
 
@@ -560,7 +618,7 @@ The canonical Wrangler file remains unchanged.
 
 The temporary file is ignored, is written with restrictive permissions when the host supports them, is never logged, and is removed after deployment when practical.
 
-## 21. Fleet deployment model
+## 29. Fleet deployment model
 
 ```text
 developer / CI
@@ -591,7 +649,7 @@ Application deployment does not require pushing code to every node individually.
 
 Only one deployment writer should publish to a fleet at a time. Deployment serialization belongs to CI/infrastructure rather than this application boilerplate.
 
-## 22. Fleet bucket security
+## 29. Fleet bucket security
 
 The fleet object store is a root-level administrative trust boundary.
 
@@ -606,7 +664,7 @@ Require normal root-level controls instead:
 - credential rotation,
 - auditing where available.
 
-## 23. Persistent identities and migrations
+## 29. Persistent identities and migrations
 
 Treat these as persistent schema rather than cosmetic names:
 
@@ -624,7 +682,7 @@ Do not casually rename them.
 
 Durable Object migrations should be append-only after production deployment unless Celld explicitly supports the intended transition.
 
-## 24. Runtime version compatibility
+## 29. Runtime version compatibility
 
 Prefer the same Celld release for deployment tooling and fleet nodes.
 
@@ -632,7 +690,7 @@ Do not assume a project built with newer runtime features will work safely on ol
 
 How Celld binaries are distributed or upgraded is infrastructure-specific and outside the application standard.
 
-## 25. Command surface
+## 29. Command surface
 
 The boilerplate intentionally keeps commands small:
 
@@ -662,7 +720,7 @@ doctor
 
 until a real workflow requires them.
 
-## 26. Decision guide
+## 29. Decision guide
 
 Use these defaults when adding functionality.
 
@@ -683,7 +741,7 @@ Use these defaults when adding functionality.
 
 Do not use a Durable Object merely because one is available. Use it when the ownership/state model benefits from one.
 
-## 27. What is intentionally not standardized
+## 29. What is intentionally not standardized
 
 This boilerplate does not select:
 
@@ -703,7 +761,7 @@ This boilerplate does not select:
 
 Those are application or infrastructure decisions.
 
-## 28. Final architecture
+## 29. Final architecture
 
 ```text
                       PUBLIC
