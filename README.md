@@ -100,6 +100,25 @@ To intentionally reset local Celld state, use Celld directly:
 celld dev . --clean
 ```
 
+## Typed web and mobile clients
+
+Hono's typed client can use the exported `AppType` while still speaking ordinary HTTPS:
+
+```ts
+import { hc } from "hono/client";
+import type { AppType } from "./celld/http/app";
+
+const api = hc<AppType>("https://api.example.com");
+
+const response = await api.api.rooms[":roomId"].$get({
+  param: { roomId: "demo" },
+});
+```
+
+This is a public HTTP client, not direct Celld Durable Object RPC. Inside the Worker, routes use native Celld bindings/RPC to reach stateful objects.
+
+For a larger polyrepo or mobile setup, expose the API type from a shared type-only package rather than importing server implementation code into the client bundle.
+
 ## Environment variables
 
 Application runtime variables belong in `.env`. The committed templates are:
