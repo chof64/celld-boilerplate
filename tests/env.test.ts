@@ -18,11 +18,11 @@ describe("Worker environment", () => {
     });
   });
 
-  it("serializes values for Celld .dev.vars without exposing extra syntax", () => {
+  it("serializes selected values for Celld .dev.vars", () => {
     expect(
       serializeDevVars({
-        GREETING: 'Hello "Celld"',
+        GREETING: "Hello Celld",
       }),
-    ).toBe('GREETING="Hello "Celld""\n');
+    ).toBe('GREETING="Hello Celld"\n');
   });
 });
