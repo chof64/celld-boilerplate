@@ -7,7 +7,7 @@ describe("HTTP API", () => {
   it("serves health through Hono", async () => {
     const env = {
       GREETING: "Hello from test",
-    } as Env;
+    } as unknown as Env;
 
     const response = await app.request("/health", undefined, env);
 
