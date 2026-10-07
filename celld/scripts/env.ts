@@ -60,8 +60,7 @@ export function serializeDevVars(environment: Record<string, string>): string {
 
   return entries
     .map(([name, value]) => {
-      if (/[
-]/u.test(value)) {
+      if (/[\r\n]/u.test(value)) {
         throw new Error(
           `Worker environment variable ${name} contains a newline and cannot be represented in .dev.vars`,
         );
