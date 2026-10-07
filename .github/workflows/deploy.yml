@@ -18,6 +18,7 @@ jobs:
     name: Deploy to Celld
     runs-on: ubuntu-latest
     environment: production
+    if: github.ref == 'refs/heads/main'
 
     steps:
       - name: Check out repository
@@ -37,6 +38,24 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install Celld
+        shell: bash
+        env:
+          CELLD_VERSION: ${{ vars.CELLD_VERSION }}
+        run: |
+          if [[ -z "$CELLD_VERSION" ]]; then
+            echo "Set the CELLD_VERSION variable in the production GitHub Environment." >&2
+            exit 1
+          fi
+
+          curl -fsSL https://celld.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          celld --version
+
+      - name: Verify
+        run: pnpm check
+
       - name: Write deployment environment
         shell: bash
         env:
@@ -50,33 +69,56 @@ jobs:
           printf '%s\n' "$ENV_FILE" > .env
           chmod 600 .env
 
-      - name: Install Celld
-        shell: bash
-        run: |
-          CELLD_VERSION="$(node --input-type=module <<'NODE'
+          node --input-type=module <<'NODE'
           import { readFileSync } from "node:fs";
           import { parse } from "dotenv";
 
           const env = parse(readFileSync(".env"));
+          const infrastructureVariables = [
+            "CELLD_VERSION",
+            "CELLD_BUCKET",
+            "S3_ENDPOINT",
+            "AWS_REGION",
+            "AWS_DEFAULT_REGION",
+            "AWS_ACCESS_KEY_ID",
+            "AWS_SECRET_ACCESS_KEY",
+            "AWS_SESSION_TOKEN",
+          ];
+          const included = infrastructureVariables.filter((name) => name in env);
 
-          if (env.CELLD_VERSION) {
-            process.stdout.write(env.CELLD_VERSION);
+          if (included.length > 0) {
+            console.error(
+              `Remove infrastructure settings from ENV_FILE and configure them through the production GitHub Environment: ${included.join(", ")}`,
+            );
+            process.exit(1);
           }
           NODE
-          )"
-
-          if [ -n "$CELLD_VERSION" ]; then
-            export CELLD_VERSION
-          fi
-
-          curl -fsSL https://celld.dev/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Verify
-        run: pnpm check
 
       - name: Dry-run deployment
-        run: pnpm deploy -- --dry-run
+        env:
+          CELLD_BUCKET: ${{ vars.CELLD_BUCKET }}
+          S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+        shell: bash
+        run: |
+          for name in CELLD_BUCKET AWS_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [[ -z "${!name}" ]]; then
+              printf 'Required production setting %s is missing.\n' "$name" >&2
+              exit 1
+            fi
+          done
+
+          pnpm deploy -- --dry-run
 
       - name: Deploy
+        env:
+          CELLD_BUCKET: ${{ vars.CELLD_BUCKET }}
+          S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
         run: pnpm deploy

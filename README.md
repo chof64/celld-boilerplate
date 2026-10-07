@@ -180,24 +180,23 @@ pnpm deploy -- --dry-run
 
 ### GitHub Actions
 
-A production deployment workflow is included at `.github/workflows/deploy.yml`. It runs on pushes to `main` and supports manual dispatch.
+A production deployment workflow is included at `.github/workflows/deploy.yml`. It runs on pushes to `main` and supports manual dispatch from `main`. Configure these values in the `production` GitHub Environment:
 
-Add one GitHub Actions secret named `ENV_FILE` containing the complete deploy-time environment file:
+- Variables: `CELLD_VERSION`, `CELLD_BUCKET`, `AWS_REGION`, and `S3_ENDPOINT` when using S3-compatible storage (omit the endpoint for AWS S3).
+- Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`.
+- Secret `ENV_FILE`: application runtime variables only.
+
+Set `CELLD_VERSION` to the exact release tag used by the running Celld fleet, such as `v0.1.0`. The workflow requires it and installs that release. Keep it aligned when upgrading the fleet.
+
+The `ENV_FILE` secret contains only application runtime values, for example:
 
 ```dotenv
-CELLD_VERSION=v0.0.1
-CELLD_BUCKET=s3://my-celld-fleet
-S3_ENDPOINT=https://ACCOUNT.r2.cloudflarestorage.com
-AWS_REGION=auto
-AWS_ACCESS_KEY_ID=...
-AWS_SECRET_ACCESS_KEY=...
-
 GREETING=Hello from production
 ```
 
-The workflow materializes that secret as `.env`, installs Celld, runs `pnpm check`, performs a deployment dry run, and then deploys once to the fleet. Deploys are serialized with workflow concurrency.
+The workflow installs the pinned Celld release and runs `pnpm check` before materializing `ENV_FILE` as `.env`. It rejects fleet settings inside `ENV_FILE`, then passes the bucket settings and credentials directly to the dry-run and deploy processes. Deploys are serialized with workflow concurrency.
 
-Only variables declared in `celld/env.ts` become Worker bindings. Fleet credentials remain deploy-process environment variables and are not copied into the Worker.
+Only variables declared in `celld/env.ts` become Worker bindings. The fleet settings and credentials remain deploy-process environment variables and are not copied into the Worker.
 
 See [DEPLOY.md](./DEPLOY.md#github-actions) for the full workflow contract and secret setup.
 
