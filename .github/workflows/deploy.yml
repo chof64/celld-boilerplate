@@ -1,0 +1,81 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: celld-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Celld
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Write deployment environment
+        shell: bash
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: |
+          if [ -z "$ENV_FILE" ]; then
+            echo "ENV_FILE secret is required." >&2
+            exit 1
+          fi
+
+          printf '%s\n' "$ENV_FILE" > .env
+          chmod 600 .env
+
+      - name: Install Celld
+        shell: bash
+        run: |
+          CELLD_VERSION="$(node --input-type=module <<'NODE'
+          import { readFileSync } from "node:fs";
+          import { parse } from "dotenv";
+
+          const env = parse(readFileSync(".env"));
+
+          if (env.CELLD_VERSION) {
+            process.stdout.write(env.CELLD_VERSION);
+          }
+          NODE
+          )"
+
+          if [ -n "$CELLD_VERSION" ]; then
+            export CELLD_VERSION
+          fi
+
+          curl -fsSL https://celld.dev/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Verify
+        run: pnpm check
+
+      - name: Dry-run deployment
+        run: pnpm deploy -- --dry-run
+
+      - name: Deploy
+        run: pnpm deploy
