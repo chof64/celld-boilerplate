@@ -47,48 +47,67 @@ For normal stateful operations, Hono translates the public HTTP request into a n
 
 Production also needs access to the fleet object store through Celld's normal environment/credential configuration.
 
-## Start
+## Chat demo
+
+The repository includes a small single-page chat application inspired by `chof64/chat-app`. It is intentionally simple so the runtime architecture stays visible.
+
+The demo uses:
+
+```text
+Browser
+  |
+  +-- GET /api/rooms/:roomId/messages
+  |      REST -> Hono -> Room.listMessages() RPC -> Durable Object SQLite
+  |
+  +-- POST /api/rooms/:roomId/messages
+  |      REST -> Hono -> Room.sendMessage() RPC -> SQLite + broadcast
+  |
+  +-- GET /api/rooms/:roomId/socket
+         WebSocket -> Hono -> Room.fetch() -> Durable Object
+```
+
+The WebSocket is only for realtime delivery. Message creation and history remain ordinary REST endpoints.
+
+### Run it
 
 ```bash
 pnpm install
 cp .env.example .env
+```
+
+Run the frontend and Celld in separate terminals:
+
+```bash
+pnpm dev
+```
+
+```bash
 pnpm dev:celld
 ```
 
-Celld serves the Worker at `http://127.0.0.1:9876` by default.
+Open `http://localhost:5173`.
 
-Try the health endpoint:
+Vite serves the single-page app and proxies `/api/*`, `/health`, and WebSocket upgrades to Celld at `http://127.0.0.1:9876`.
+
+You can also exercise the REST API directly:
 
 ```bash
-curl http://127.0.0.1:9876/health
+curl http://127.0.0.1:9876/api/rooms/lobby/messages
 ```
 
-Read a room:
-
 ```bash
-curl http://127.0.0.1:9876/api/rooms/demo
-```
-
-Set its durable topic:
-
-```bash
-curl -X PUT http://127.0.0.1:9876/api/rooms/demo/topic \
+curl -X POST http://127.0.0.1:9876/api/rooms/lobby/messages \
   -H 'content-type: application/json' \
-  -d '{"topic":"Hello from Celld"}'
+  -d '{"userName":"Ada","text":"Hello from Celld"}'
 ```
 
-The example Room Durable Object also exposes a WebSocket at:
-
-```text
-ws://127.0.0.1:9876/api/rooms/demo/socket
-```
-
-The endpoint exists to demonstrate the intended boundary: Hono receives the public upgrade, resolves `Room("demo")`, then forwards the upgrade to the Durable Object.
+In production, Celld serves the same files from `src/` as static assets and sends `/api/*` and `/health` to the Worker first. The SPA and API can therefore live on one origin without production CORS configuration.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
+| `pnpm dev` | Run the Vite frontend dev server with API/WebSocket proxying |
 | `pnpm dev:celld` | Generate local Worker vars and run `celld dev .` |
 | `pnpm typecheck` | Type-check the boilerplate |
 | `pnpm test` | Run tests |
@@ -107,7 +126,8 @@ The default client contract is an ordinary RESTful HTTP API:
 
 ```text
 GET  /api/rooms/:roomId
-PUT  /api/rooms/:roomId/topic
+GET  /api/rooms/:roomId/messages
+POST /api/rooms/:roomId/messages
 ```
 
 Web, native mobile, third-party clients, scripts, and services can call these endpoints with any standard HTTP client. A client does not need Hono-specific packages.
@@ -167,7 +187,9 @@ pnpm deploy -- --dry-run
 
 ## Using this in a frontend repository
 
-This boilerplate keeps Celld code under `celld/` so it can be added to a mixed frontend/backend repository without taking over `src/`.
+This boilerplate keeps Celld code under `celld/` and the example frontend under `src/`.
+
+The included SPA uses browser-native modules so the same files can be served directly by Celld in production. A real project can replace `src/` with any frontend framework and point the root Wrangler asset directory at that framework's build output.
 
 In a mixed project:
 
