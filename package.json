@@ -8,7 +8,6 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "vite --config vite.config.ts",
     "dev:celld": "tsx celld/scripts/dev.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -24,10 +23,10 @@
     "@cloudflare/workers-types": "^5.20261007.1",
     "@types/node": "^26.6.4",
     "dotenv": "^18.0.6",
+    "esbuild": "0.28.2",
     "jsonc-parser": "^3.3.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3",
-    "vite": "^8.3.3"
+    "vitest": "^5.0.3"
   }
 }

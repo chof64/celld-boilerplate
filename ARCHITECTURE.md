@@ -537,9 +537,11 @@ Do not add a normal `dev:clean` abstraction. If a developer intentionally wants 
 celld dev . --clean
 ```
 
-## 18. Frontend development proxy
+## 18. Frontend development
 
-When frontend and API are same-origin in production, prefer a frontend dev-server proxy:
+The reference browser-native SPA runs directly from Celld's configured asset directory in local development and production. It does not need a separate frontend server or proxy.
+
+For a framework-based frontend with its own dev server, proxy API and WebSocket requests to local Celld:
 
 ```text
 Browser
@@ -554,7 +556,7 @@ frontend dev server
 
 This preserves production-like URLs and avoids development-only CORS configuration.
 
-The exact proxy implementation is frontend-framework-specific. The reference chat app uses Vite to proxy both REST and WebSocket traffic to local Celld.
+The proxy implementation is frontend-framework-specific. In production, point Celld's asset directory at the framework's build output so the app and API can share one origin.
 
 ## 19. Static frontend assets
 
