@@ -165,11 +165,17 @@ TLS can terminate at the ingress layer.
 
 ### Internal listener
 
-Example:
+`CELLD_INTERNAL_ADDR` is the address Celld **binds inside the node/container**.
+
+For a container attached to a private network, the usual value is:
 
 ```text
-10.0.0.12:8081
+0.0.0.0:8081
 ```
+
+`0.0.0.0` is a wildcard bind address, not a hostname. It means "listen on every interface available inside this container."
+
+If Celld runs directly on the host, or with Docker `--network host`, binding to a specific host-private address such as `10.0.0.12:8081` is also valid, provided that address actually exists on the host.
 
 This handles:
 
@@ -187,7 +193,9 @@ Never publish the internal listener to the public Internet.
 
 ### Advertised address
 
-Each multi-node fleet member advertises an address that every other node can reach:
+`CELLD_ADVERTISE` is different: it is the address **other Celld nodes dial**.
+
+Each multi-node fleet member advertises a stable peer-reachable hostname or private IP:
 
 ```text
 node-a.internal:8081
@@ -197,6 +205,17 @@ node-c.internal:8081
 
 `CELLD_ADVERTISE` must route to that node's **internal listener**, not its public Worker listener.
 
+When `CELLD_INTERNAL_ADDR` uses an unspecified/wildcard address such as `0.0.0.0:8081`, Celld requires an explicit `CELLD_ADVERTISE` because peers cannot dial `0.0.0.0`.
+
+For container networking, a common pairing is:
+
+```dotenv
+CELLD_INTERNAL_ADDR=0.0.0.0:8081
+CELLD_ADVERTISE=celld-a:8081
+```
+
+where `celld-a` is a hostname/DNS name resolvable from the other Celld nodes on the trusted private network.
+
 Nodes discover membership from leases stored in the fleet bucket. There is no join command and no static peer list.
 
 ---
@@ -205,7 +224,7 @@ Nodes discover membership from leases stored in the fleet bucket. There is no jo
 
 Celld accepts command-line flags or environment variables. For supervised production deployments, environment variables are usually easier to manage.
 
-A typical multi-node configuration looks like:
+A typical **containerized** multi-node configuration looks like:
 
 ```dotenv
 CELLD_BUCKET=s3://my-celld-fleet
@@ -217,7 +236,7 @@ AWS_SECRET_ACCESS_KEY=...
 # AWS_SESSION_TOKEN=...
 
 CELLD_ADDR=0.0.0.0:8080
-CELLD_INTERNAL_ADDR=10.0.0.12:8081
+CELLD_INTERNAL_ADDR=0.0.0.0:8081
 CELLD_ADVERTISE=node-a.internal:8081
 CELLD_NODE=node-a
 
@@ -251,8 +270,8 @@ These are **infrastructure variables**. They do not belong in this repository's 
 | --- | --- |
 | `CELLD_BUCKET` | Fleet object-store bucket/container and optional prefix |
 | `CELLD_ADDR` | Public Worker listener |
-| `CELLD_INTERNAL_ADDR` | Private peer/operator listener |
-| `CELLD_ADVERTISE` | Address other nodes use to reach this node |
+| `CELLD_INTERNAL_ADDR` | Local bind address for the private peer/operator listener |
+| `CELLD_ADVERTISE` | Stable hostname/private address other nodes use to reach this listener |
 | `CELLD_NODE` | Optional explicit node-session ID; keep it unique among concurrently live nodes |
 | `CELLD_WATCH` | Persistent local SQLite/replication work directory |
 | `CELLD_DURABILITY` | `bucket` or `fleet` |
