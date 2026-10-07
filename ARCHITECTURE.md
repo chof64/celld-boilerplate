@@ -102,8 +102,9 @@ Hono is responsible for public concerns such as:
 Example:
 
 ```text
-POST /api/rides/:rideId/accept
+PATCH /api/rides/:rideId
               |
+              | { "status": "accepted", "driverId": "..." }
               v
             Hono
               |
