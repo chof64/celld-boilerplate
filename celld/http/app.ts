@@ -8,8 +8,9 @@ const roomParams = z.object({
   roomId: z.string().trim().min(1).max(128),
 });
 
-const topicBody = z.object({
-  topic: z.string().trim().min(1).max(256),
+const messageBody = z.object({
+  userName: z.string().trim().min(1).max(40),
+  text: z.string().trim().min(1).max(2_000),
 });
 
 export const app = new Hono<{ Bindings: Env }>()
@@ -29,16 +30,28 @@ export const app = new Hono<{ Bindings: Env }>()
       return c.json(await room.snapshot());
     },
   )
-  .put(
-    "/api/rooms/:roomId/topic",
+  .get(
+    "/api/rooms/:roomId/messages",
     sValidator("param", roomParams),
-    sValidator("json", topicBody),
     async (c) => {
       const { roomId } = c.req.valid("param");
-      const { topic } = c.req.valid("json");
       const room = c.env.ROOM.getByName(roomId);
 
-      return c.json(await room.setTopic(topic));
+      return c.json({
+        messages: await room.listMessages(),
+      });
+    },
+  )
+  .post(
+    "/api/rooms/:roomId/messages",
+    sValidator("param", roomParams),
+    sValidator("json", messageBody),
+    async (c) => {
+      const { roomId } = c.req.valid("param");
+      const message = c.req.valid("json");
+      const room = c.env.ROOM.getByName(roomId);
+
+      return c.json(await room.sendMessage(message), 201);
     },
   )
   .get(
