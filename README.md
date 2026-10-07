@@ -178,6 +178,29 @@ You can pass native Celld deploy flags through the wrapper:
 pnpm deploy -- --dry-run
 ```
 
+### GitHub Actions
+
+A production deployment workflow is included at `.github/workflows/deploy.yml`. It runs on pushes to `main` and supports manual dispatch.
+
+Add one GitHub Actions secret named `ENV_FILE` containing the complete deploy-time environment file:
+
+```dotenv
+CELLD_VERSION=v0.0.1
+CELLD_BUCKET=s3://my-celld-fleet
+S3_ENDPOINT=https://ACCOUNT.r2.cloudflarestorage.com
+AWS_REGION=auto
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+
+GREETING=Hello from production
+```
+
+The workflow materializes that secret as `.env`, installs Celld, runs `pnpm check`, performs a deployment dry run, and then deploys once to the fleet. Deploys are serialized with workflow concurrency.
+
+Only variables declared in `celld/env.ts` become Worker bindings. Fleet credentials remain deploy-process environment variables and are not copied into the Worker.
+
+See [DEPLOY.md](./DEPLOY.md#github-actions) for the full workflow contract and secret setup.
+
 ## Using this in a frontend repository
 
 This boilerplate keeps Celld code under `celld/` and the example frontend under `src/`.
