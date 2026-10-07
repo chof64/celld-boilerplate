@@ -570,7 +570,7 @@ Celld's asset layer serves frontend files directly. API and health routes skip a
 
 The reference app is browser-native and therefore needs no production compilation step. Framework-based applications should instead point `assets.directory` at their production build output such as `dist/` or `out/`.
 
-## 29. Production deployment
+## 20. Production deployment
 
 The stable project command is:
 
@@ -588,7 +588,7 @@ It does not use `wrangler deploy`.
 
 Wrangler describes the application. Celld owns deployment.
 
-## 29. Production Worker variables
+## 21. Production Worker variables
 
 Native `celld deploy` does not read `.dev.vars` into production Worker bindings.
 
@@ -618,7 +618,7 @@ The canonical Wrangler file remains unchanged.
 
 The temporary file is ignored, is written with restrictive permissions when the host supports them, is never logged, and is removed after deployment when practical.
 
-## 29. Fleet deployment model
+## 22. Fleet deployment model
 
 ```text
 developer / CI
@@ -649,7 +649,7 @@ Application deployment does not require pushing code to every node individually.
 
 Only one deployment writer should publish to a fleet at a time. Deployment serialization belongs to CI/infrastructure rather than this application boilerplate.
 
-## 29. Fleet bucket security
+## 23. Fleet bucket security
 
 The fleet object store is a root-level administrative trust boundary.
 
@@ -664,7 +664,7 @@ Require normal root-level controls instead:
 - credential rotation,
 - auditing where available.
 
-## 29. Persistent identities and migrations
+## 24. Persistent identities and migrations
 
 Treat these as persistent schema rather than cosmetic names:
 
@@ -682,7 +682,7 @@ Do not casually rename them.
 
 Durable Object migrations should be append-only after production deployment unless Celld explicitly supports the intended transition.
 
-## 29. Runtime version compatibility
+## 25. Runtime version compatibility
 
 Prefer the same Celld release for deployment tooling and fleet nodes.
 
@@ -690,7 +690,7 @@ Do not assume a project built with newer runtime features will work safely on ol
 
 How Celld binaries are distributed or upgraded is infrastructure-specific and outside the application standard.
 
-## 29. Command surface
+## 26. Command surface
 
 The boilerplate intentionally keeps commands small:
 
@@ -720,7 +720,7 @@ doctor
 
 until a real workflow requires them.
 
-## 29. Decision guide
+## 27. Decision guide
 
 Use these defaults when adding functionality.
 
@@ -741,7 +741,7 @@ Use these defaults when adding functionality.
 
 Do not use a Durable Object merely because one is available. Use it when the ownership/state model benefits from one.
 
-## 29. What is intentionally not standardized
+## 28. What is intentionally not standardized
 
 This boilerplate does not select:
 
