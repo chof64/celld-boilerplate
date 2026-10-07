@@ -8,6 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "dev": "vite --config vite.config.ts",
     "dev:celld": "tsx celld/scripts/dev.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -26,6 +27,7 @@
     "jsonc-parser": "^3.3.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "vite": "^8.3.3"
   }
 }
