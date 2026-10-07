@@ -1,26 +1,23 @@
 # Deploying Celld
 
-This guide covers the operational lifecycle of a Celld application:
+This guide describes how to run this boilerplate in production.
 
-- starting a production Celld node,
-- choosing single-node or multi-node deployment,
-- configuring the fleet object store,
-- networking and health checks,
-- deploying the application,
-- adding and removing nodes,
-- upgrading Celld,
-- choosing rolling versus stopped-fleet upgrades,
-- recovering or rolling back an application deployment.
+It deliberately separates the two production shapes we support:
 
-It is intentionally infrastructure-agnostic. The same architecture can be run by Docker, Coolify, systemd, Kubernetes, Nomad, or another supervisor.
+1. **Single-node production** — simplest deployment, one Celld node, bucket durability.
+2. **Multi-node production** — two or more Celld nodes, fleet durability, private peer networking, rolling maintenance when the Celld release supports it.
 
-For application architecture, see [ARCHITECTURE.md](./ARCHITECTURE.md).
+Application deployment and Celld runtime deployment are separate operations. A normal application deploy updates the fleet deployment pointer and running nodes adopt the new application in place. A Celld runtime upgrade replaces or restarts the Celld process itself.
+
+For application structure and runtime boundaries, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 
 ---
 
-## 1. Two different things get deployed
+# Shared concepts
 
-Keep these operations separate:
+## Application deploy versus Celld runtime upgrade
+
+These are different operations:
 
 ```text
 Application deployment
@@ -33,93 +30,96 @@ Application deployment
 fleet deployment pointer
       |
       v
-running nodes adopt new application code in place
+running nodes adopt new app in place
+```
 
+versus:
 
-Celld node upgrade
-  new celld binary / container image
+```text
+Celld runtime upgrade
+  new celld image / binary
       |
       v
-restart or replace fleet nodes
+replace or restart node processes
       |
       v
 rolling update OR stopped-fleet update
 ```
 
-An application deploy normally does **not** restart Celld nodes.
+A normal application deployment does not require restarting the Celld nodes.
 
-A Celld runtime upgrade changes the node binary/container itself and therefore requires replacing or restarting nodes.
-
----
-
-## 2. Production topology
-
-A Celld fleet runs one application.
-
-Every node in a fleet uses the same fleet object store and application deployment pointer.
-
-### Single node
-
-A single node is valid and is the simplest production shape:
-
-```text
-Internet
-   |
-   v
-Ingress / TLS
-   |
-   v
-Celld node
-   |
-   +-- local work directory
-   |
-   +-- fleet bucket
-```
-
-For a deliberately single-node deployment, use:
-
-```text
-CELLD_DURABILITY=bucket
-```
-
-Every durable write waits for the fleet bucket before Celld acknowledges it.
-
-This keeps the durability model straightforward but makes object-store latency part of every durable write.
-
-### Multi-node fleet
-
-For workloads where lower durable-write latency, higher availability, or node maintenance without taking the whole application offline matters, use two or more nodes:
-
-```text
-                     fleet bucket
-                         |
-              +----------+----------+
-              |          |          |
-              v          v          v
-           node-a      node-b      node-c
-              ^          ^          ^
-              +----------+----------+
-                   private peer network
-                         ^
-                         |
-                    public ingress
-```
-
-Use:
-
-```text
-CELLD_DURABILITY=fleet
-```
-
-This is Celld's current default. The owner sends durable writes to one or two fleet peers and can acknowledge once a follower holds the write on disk, or once the bucket proof finishes, whichever happens first.
-
-A one-node fleet with `CELLD_DURABILITY=fleet` still works, but it has no follower and therefore waits for the bucket. Setting `bucket` on a deliberately single-node deployment makes that intent explicit.
+A Celld runtime upgrade changes the node implementation and must follow the upgrade rules for the exact old/new Celld versions.
 
 ---
 
-## 3. What Celld persists
+## Container networking convention
 
-There are two important persistence surfaces:
+This guide assumes Celld runs in a container **without host networking**.
+
+Inside the container, Celld binds both listeners on wildcard addresses:
+
+```dotenv
+CELLD_ADDR=0.0.0.0:8080
+CELLD_INTERNAL_ADDR=0.0.0.0:8081
+```
+
+`0.0.0.0` is a bind address. It means "listen on every network interface available inside this container."
+
+It is not an address that another node can dial.
+
+For that reason, a wildcard internal bind must be paired with an explicit peer-reachable advertised address:
+
+```dotenv
+CELLD_ADVERTISE=celld-a.internal:8081
+```
+
+Conceptually:
+
+```text
+CELLD_INTERNAL_ADDR
+0.0.0.0:8081
+      |
+      | bind inside container
+      v
+private container interface :8081
+      ^
+      |
+CELLD_ADVERTISE
+celld-a.internal:8081
+      ^
+      |
+other Celld nodes dial this
+```
+
+The platform/network must route the advertised hostname or private IP to the container's internal listener.
+
+The public Worker listener may be routed through ingress.
+
+The internal listener must never be exposed to the public Internet.
+
+---
+
+## Node IDs
+
+Do not set `CELLD_NODE` by default.
+
+Celld generates a node-session ID automatically when the variable is absent:
+
+```text
+node_<random session id>
+```
+
+That is the preferred boilerplate behavior.
+
+Set `CELLD_NODE` only when an operator has a concrete reason to control the session ID. It is not needed for ordinary fleet discovery or node membership.
+
+Fleet membership comes from leases in the fleet bucket, not from a fixed node-name list.
+
+---
+
+## Persistent surfaces
+
+Celld uses two persistence surfaces:
 
 ```text
 fleet object store
@@ -127,8 +127,8 @@ fleet object store
   static assets
   durable state / LTX
   fleet leases and metadata
-  R2 logical buckets
-  other fleet state
+  logical R2 data
+  other shared fleet state
 
 node work directory (CELLD_WATCH)
   local SQLite files
@@ -137,94 +137,112 @@ node work directory (CELLD_WATCH)
   runtime work files
 ```
 
-The fleet object store is the long-term shared store for deployment and durable state.
+The fleet object store is the shared long-term store.
 
-The node work directory is also part of the durability system and must be treated as persistent node state. In fleet durability mode, a follower disk can contain acknowledged writes that have not yet reached the bucket when maintenance begins.
+The local `CELLD_WATCH` directory is also part of the durability system and must live on persistent storage. In fleet durability mode, a follower disk may contain acknowledged writes that have not yet reached the bucket.
 
-Do not use an ephemeral container filesystem for `CELLD_WATCH`.
+Never run two Celld processes against the same `CELLD_WATCH` directory at the same time.
+
+Do not place `CELLD_WATCH` on an ephemeral container filesystem.
 
 ---
 
-## 4. Network surfaces
+## Listener security
 
-A production node has two different listeners.
+Celld has two network listeners.
 
 ### Public Worker listener
-
-Example:
 
 ```text
 0.0.0.0:8080
 ```
 
-This receives application HTTP and WebSocket traffic.
+Use it for:
 
-Expose this listener through your load balancer, reverse proxy, or ingress.
+- public HTTP,
+- REST API,
+- WebSockets,
+- Celld public health.
 
-TLS can terminate at the ingress layer.
+Expose it through your load balancer, reverse proxy, or platform ingress.
+
+TLS normally terminates at that ingress layer.
 
 ### Internal listener
-
-`CELLD_INTERNAL_ADDR` is the address Celld **binds inside the node/container**.
-
-For a container attached to a private network, the usual value is:
 
 ```text
 0.0.0.0:8081
 ```
 
-`0.0.0.0` is a wildcard bind address, not a hostname. It means "listen on every interface available inside this container."
+Use it for:
 
-If Celld runs directly on the host, or with Docker `--network host`, binding to a specific host-private address such as `10.0.0.12:8081` is also valid, provided that address actually exists on the host.
-
-This handles:
-
-- peer traffic,
-- cell routing,
+- peer routing,
+- cell traffic,
+- fleet RPC transport,
 - operator APIs,
-- diagnostics and state inspection,
-- graceful-shutdown control surfaces.
+- state inspection,
+- shutdown/handoff operations.
 
-The internal listener must remain private.
+The internal listener is a trusted private-network surface. Celld does not provide built-in TLS for peer traffic and some operator routes are intentionally unauthenticated.
 
-Celld does not provide TLS for peer traffic, and some operator routes are intentionally unauthenticated. Use a trusted private network or encrypted overlay such as WireGuard or Tailscale.
+Use a private network or encrypted overlay.
 
-Never publish the internal listener to the public Internet.
-
-### Advertised address
-
-`CELLD_ADVERTISE` is different: it is the address **other Celld nodes dial**.
-
-Each multi-node fleet member advertises a stable peer-reachable hostname or private IP:
-
-```text
-node-a.internal:8081
-node-b.internal:8081
-node-c.internal:8081
-```
-
-`CELLD_ADVERTISE` must route to that node's **internal listener**, not its public Worker listener.
-
-When `CELLD_INTERNAL_ADDR` uses an unspecified/wildcard address such as `0.0.0.0:8081`, Celld requires an explicit `CELLD_ADVERTISE` because peers cannot dial `0.0.0.0`.
-
-For container networking, a common pairing is:
-
-```dotenv
-CELLD_INTERNAL_ADDR=0.0.0.0:8081
-CELLD_ADVERTISE=celld-a:8081
-```
-
-where `celld-a` is a hostname/DNS name resolvable from the other Celld nodes on the trusted private network.
-
-Nodes discover membership from leases stored in the fleet bucket. There is no join command and no static peer list.
+Never route public Internet traffic to port 8081.
 
 ---
 
-## 5. Primary node environment variables
+# Single-node production deployment
 
-Celld accepts command-line flags or environment variables. For supervised production deployments, environment variables are usually easier to manage.
+A single-node deployment is the simplest production Celld topology.
 
-A typical **containerized** multi-node configuration looks like:
+Use it when:
+
+- application availability during node maintenance is not required,
+- one machine has enough capacity,
+- object-store latency for durable writes is acceptable,
+- operational simplicity matters more than horizontal redundancy.
+
+## Single-node topology
+
+```text
+Internet
+   |
+   v
+TLS / ingress
+   |
+   v
+Celld container
+  public :8080
+  internal :8081
+      |
+      +-- persistent CELLD_WATCH
+      |
+      +-- fleet bucket
+```
+
+The internal listener remains private even though there are no peer nodes today. Keeping the listener topology production-correct also makes a later move to a fleet straightforward.
+
+---
+
+## Single-node durability
+
+Use:
+
+```dotenv
+CELLD_DURABILITY=bucket
+```
+
+Every acknowledged durable write waits for the fleet bucket.
+
+This makes the single-node durability posture explicit: the node has no follower, so the object store is the durability proof.
+
+A one-node deployment using the default `fleet` mode also eventually falls back to the bucket because there is no follower, but `bucket` better communicates the intended topology.
+
+---
+
+## Single-node environment
+
+Example infrastructure environment:
 
 ```dotenv
 CELLD_BUCKET=s3://my-celld-fleet
@@ -237,14 +255,238 @@ AWS_SECRET_ACCESS_KEY=...
 
 CELLD_ADDR=0.0.0.0:8080
 CELLD_INTERNAL_ADDR=0.0.0.0:8081
-CELLD_ADVERTISE=node-a.internal:8081
-CELLD_NODE=node-a
+CELLD_ADVERTISE=celld.internal:8081
 
 CELLD_WATCH=/var/lib/celld/state
+CELLD_DURABILITY=bucket
+```
+
+Do not add `CELLD_NODE` unless you explicitly need a fixed session ID.
+
+The hostname used by `CELLD_ADVERTISE` must resolve to the container's private internal listener from the network where Celld operates.
+
+For a single-node setup this may be a platform-private service name such as:
+
+```text
+celld.internal
+```
+
+Even though no second node currently dials it, Celld requires an advertised address when the internal listener binds to `0.0.0.0`.
+
+---
+
+## Single-node container configuration
+
+The container should:
+
+- attach to the platform/private application network,
+- bind Celld to `0.0.0.0:8080` and `0.0.0.0:8081`,
+- route only port 8080 through public ingress,
+- keep port 8081 private,
+- mount persistent storage at the path used by `CELLD_WATCH`,
+- receive fleet bucket credentials through the infrastructure/secrets layer,
+- receive SIGTERM on shutdown,
+- have a stop grace longer than Celld's graceful shutdown bound.
+
+A conceptual Docker Compose-style shape is:
+
+```yaml
+services:
+  celld:
+    image: ghcr.io/denoland/celld:<PINNED_VERSION>
+    restart: unless-stopped
+    environment:
+      CELLD_BUCKET: s3://my-celld-fleet
+      S3_ENDPOINT: https://object-storage.example.com
+      AWS_REGION: auto
+      CELLD_ADDR: 0.0.0.0:8080
+      CELLD_INTERNAL_ADDR: 0.0.0.0:8081
+      CELLD_ADVERTISE: celld.internal:8081
+      CELLD_WATCH: /var/lib/celld/state
+      CELLD_DURABILITY: bucket
+    volumes:
+      - celld-state:/var/lib/celld
+    expose:
+      - "8080"
+      - "8081"
+    stop_grace_period: 90s
+```
+
+Supply credentials through your secrets mechanism rather than committing them into Compose or the application repository.
+
+The platform ingress should publish only the public Worker service.
+
+---
+
+## Starting a single node
+
+Operational sequence:
+
+```text
+1. Provision fleet bucket
+2. Provision persistent CELLD_WATCH volume
+3. Configure object-store credentials
+4. Start Celld container
+5. Wait for Celld health
+6. Deploy application
+7. Test public API and realtime paths
+```
+
+Health endpoint:
+
+```bash
+curl -f http://CELLD_PUBLIC_ADDRESS/.well-known/celld/health
+```
+
+Once healthy, deploy this project:
+
+```bash
+pnpm install
+pnpm check
+pnpm deploy -- --dry-run
+pnpm deploy
+```
+
+The deploy process must have the same fleet bucket configuration and credentials as the node.
+
+---
+
+## Single-node application deployment
+
+Application deploys do not restart the Celld process.
+
+```text
+pnpm deploy
+    |
+    v
+celld deploy
+    |
+    v
+fleet deployment pointer
+    |
+    v
+single running node polls pointer
+    |
+    v
+new application generation adopted
+```
+
+By default, nodes poll for the deployment pointer periodically.
+
+The previous application continues serving while the replacement generation is built.
+
+Already-running requests finish on the generation that accepted them.
+
+---
+
+## Single-node runtime upgrade
+
+A single-node runtime upgrade necessarily introduces an application-maintenance window because there is no second node to receive public traffic.
+
+Procedure:
+
+```text
+remove/drain public traffic
+        |
+        v
+SIGTERM Celld
+        |
+        v
+graceful shutdown
+        |
+        v
+replace image/binary
+        |
+        v
+start Celld
+        |
+        v
+wait healthy
+        |
+        v
+restore traffic
+```
+
+Steps:
+
+1. pause application deploys,
+2. drain or remove the node from public ingress,
+3. send SIGTERM through the platform supervisor,
+4. allow Celld to complete its graceful shutdown,
+5. update the pinned Celld version,
+6. preserve the existing `CELLD_WATCH` volume,
+7. start the replacement container,
+8. wait for `/.well-known/celld/health`,
+9. run diagnostics,
+10. restore public traffic.
+
+Do not delete the node work directory during an upgrade unless the exact Celld release documentation explicitly requires it.
+
+---
+
+# Multi-node production deployment
+
+Use a multi-node fleet when:
+
+- application availability during node maintenance matters,
+- durable-write latency should avoid always waiting for the bucket,
+- workload exceeds one node,
+- you want rolling node maintenance when versions are compatible.
+
+A normal production fleet has at least two nodes; three or more nodes provide more capacity and maintenance headroom.
+
+---
+
+## Multi-node topology
+
+```text
+                         fleet bucket
+                             |
+             +---------------+---------------+
+             |               |               |
+             v               v               v
+        Celld node A     Celld node B    Celld node C
+        public :8080     public :8080    public :8080
+        private:8081     private:8081    private:8081
+             ^               ^               ^
+             +---------------+---------------+
+                     trusted private network
+
+                             ^
+                             |
+                       public ingress
+```
+
+Every node:
+
+- uses the same fleet bucket,
+- uses its own persistent `CELLD_WATCH`,
+- binds its internal listener to `0.0.0.0:8081`,
+- advertises a unique peer-reachable private hostname/address,
+- normally runs the same Celld release,
+- receives public Worker traffic from the load balancer.
+
+---
+
+## Multi-node durability
+
+Use:
+
+```dotenv
 CELLD_DURABILITY=fleet
 ```
 
-A single-node setup can instead use:
+This is Celld's normal multi-node posture.
+
+The owner of a durable cell sends a write to one or two compatible peers. It may acknowledge after a follower has the write on disk, or after the bucket proof completes, whichever occurs first.
+
+The bucket remains the shared long-term persistence layer.
+
+---
+
+## Multi-node environment
+
+Node A:
 
 ```dotenv
 CELLD_BUCKET=s3://my-celld-fleet
@@ -255,148 +497,284 @@ AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
 
 CELLD_ADDR=0.0.0.0:8080
-CELLD_INTERNAL_ADDR=127.0.0.1:8081
-CELLD_NODE=node-a
+CELLD_INTERNAL_ADDR=0.0.0.0:8081
+CELLD_ADVERTISE=celld-a.internal:8081
 
 CELLD_WATCH=/var/lib/celld/state
-CELLD_DURABILITY=bucket
+CELLD_DURABILITY=fleet
 ```
 
-These are **infrastructure variables**. They do not belong in this repository's application `.env`, `.env.example`, or `.env.prod.example`.
+Node B:
 
-### Core variables
+```dotenv
+CELLD_BUCKET=s3://my-celld-fleet
+S3_ENDPOINT=https://object-storage.example.com
+AWS_REGION=auto
 
-| Variable | Purpose |
-| --- | --- |
-| `CELLD_BUCKET` | Fleet object-store bucket/container and optional prefix |
-| `CELLD_ADDR` | Public Worker listener |
-| `CELLD_INTERNAL_ADDR` | Local bind address for the private peer/operator listener |
-| `CELLD_ADVERTISE` | Stable hostname/private address other nodes use to reach this listener |
-| `CELLD_NODE` | Optional explicit node-session ID; keep it unique among concurrently live nodes |
-| `CELLD_WATCH` | Persistent local SQLite/replication work directory |
-| `CELLD_DURABILITY` | `bucket` or `fleet` |
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
 
-### Common operational variables
+CELLD_ADDR=0.0.0.0:8080
+CELLD_INTERNAL_ADDR=0.0.0.0:8081
+CELLD_ADVERTISE=celld-b.internal:8081
 
-These normally stay at their defaults until measurements justify changing them.
+CELLD_WATCH=/var/lib/celld/state
+CELLD_DURABILITY=fleet
+```
 
-| Variable | Current default / role |
-| --- | --- |
-| `CELLD_DEPLOY_POLL_S` | 30 seconds; deployment-pointer polling interval |
-| `CELLD_DEPLOY_MAX_AGE_S` | 60 seconds; maximum age of old code in a resident DO after deployment adoption |
-| `CELLD_SHUTDOWN_TOTAL_MS` | 40000 ms; total graceful process shutdown bound |
-| `CELLD_READY_FLEET_GATE_MS` | 120000 ms; first-readiness fleet-capacity gate |
-| `CELLD_OPERATION_DEADLINE_MS` | 15000 ms; normal operation deadline |
-| `CELLD_ACTIVATIONS` | Concurrent cold-cell activation limit |
-| `CELLD_MAX_RESIDENT_CELLS` | Optional hard cap for resident cells |
-| `CELLD_MAX_RSS_MB` | Memory-pressure threshold |
-| `CELLD_IDLE_EVICT_S` | Optional idle-cell hibernation age |
-| `CELLD_PLACEMENT_WEIGHT` | Relative ownership share; defaults to CPU count |
-| `RUST_LOG` | Runtime logging filter |
+Node C:
 
-Use `celld --help` on the exact Celld release you run for the complete list.
+```dotenv
+CELLD_BUCKET=s3://my-celld-fleet
+S3_ENDPOINT=https://object-storage.example.com
+AWS_REGION=auto
+
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
+
+CELLD_ADDR=0.0.0.0:8080
+CELLD_INTERNAL_ADDR=0.0.0.0:8081
+CELLD_ADVERTISE=celld-c.internal:8081
+
+CELLD_WATCH=/var/lib/celld/state
+CELLD_DURABILITY=fleet
+```
+
+No `CELLD_NODE` is required. Celld generates a node-session ID for each process.
 
 ---
 
-## 6. Object-store configuration
+## Multi-node private networking
 
-The same fleet bucket must be used by every node and by `celld deploy`.
+The advertised hostnames must be reachable from every Celld node:
 
-A bucket prefix can isolate multiple fleets in one physical bucket:
+```text
+celld-a.internal:8081
+celld-b.internal:8081
+celld-c.internal:8081
+```
+
+If every container runs on the same container network, platform/container DNS may be sufficient.
+
+If nodes live on different physical servers, ordinary single-host Docker DNS is not enough. Use a cross-host private network such as:
+
+- private datacenter/VPC networking,
+- Docker/Swarm-style overlay networking,
+- WireGuard,
+- Tailscale,
+- another trusted encrypted overlay.
+
+The network must route:
+
+```text
+celld-a.internal:8081 -> node A container :8081
+celld-b.internal:8081 -> node B container :8081
+celld-c.internal:8081 -> node C container :8081
+```
+
+Do not expose these mappings publicly.
+
+The public 8080 listener and private 8081 listener are different security boundaries.
+
+---
+
+## Starting a multi-node fleet
+
+There is no join command and no peer list to maintain.
+
+Start each node with:
+
+- the same `CELLD_BUCKET`,
+- compatible Celld versions,
+- its own persistent `CELLD_WATCH`,
+- its own peer-reachable `CELLD_ADVERTISE`.
+
+Celld publishes node leases to the fleet bucket and discovers the other live nodes from those leases.
+
+Recommended first-start sequence:
+
+```text
+1. Provision fleet bucket
+2. Provision private cross-node networking
+3. Start node A
+4. Wait healthy
+5. Start node B
+6. Wait healthy
+7. Start node C / remaining nodes
+8. Verify peer reachability / diagnose fleet
+9. Add healthy public listeners to ingress
+10. Deploy application
+```
+
+Starting all nodes together is also valid, but serial startup makes initial networking mistakes easier to diagnose.
+
+---
+
+## Adding a node later
+
+To scale out:
+
+1. provision a new persistent `CELLD_WATCH` volume,
+2. use the same fleet bucket,
+3. set `CELLD_INTERNAL_ADDR=0.0.0.0:8081`,
+4. give the node a unique peer-reachable `CELLD_ADVERTISE`,
+5. use a compatible Celld release,
+6. start the node,
+7. wait for public health to become healthy,
+8. run fleet diagnostics,
+9. add its public Worker listener to ingress.
+
+The new node discovers the fleet from the bucket.
+
+Existing nodes do not need configuration changes.
+
+---
+
+## Removing a node
+
+Prefer graceful shutdown.
+
+When the supervisor sends SIGTERM, Celld:
+
+1. marks public health unhealthy,
+2. stops accepting new public requests,
+3. finishes accepted requests,
+4. proves durable state,
+5. hands cells to compatible peers,
+6. releases ownership,
+7. exits within the configured shutdown budget.
+
+Remove nodes one at a time during normal maintenance.
+
+Do not use SIGKILL as the normal node-removal procedure.
+
+---
+
+## Multi-node application deployment
+
+Application deployment is fleet-wide and does not need per-node deploy commands.
+
+```text
+pnpm deploy
+      |
+      v
+celld deploy
+      |
+      v
+shared fleet bucket
+      |
+      v
+deployment pointer changes
+      |
+      +--------+--------+
+      |        |        |
+      v        v        v
+    node A   node B   node C
+      |        |        |
+      +-- each adopts new generation in place
+```
+
+Do not deploy separately to every node.
+
+Serialize application deploy writers so only one production deploy updates the fleet pointer at a time.
+
+---
+
+# Object-store configuration
+
+Every node in one fleet and every `celld deploy` invocation must use the same fleet bucket/prefix.
+
+A bucket prefix can isolate separate fleets inside one physical bucket:
 
 ```text
 s3://shared-bucket/production
 s3://shared-bucket/development
 ```
 
-Treat each prefix as an independent administrative trust boundary.
+Treat each prefix as an administrative trust boundary.
 
-### S3-compatible storage
-
-Typical configuration:
+## S3-compatible storage
 
 ```dotenv
 CELLD_BUCKET=s3://my-celld-fleet
 S3_ENDPOINT=https://ACCOUNT.r2.cloudflarestorage.com
 AWS_REGION=auto
+
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...
+# AWS_SESSION_TOKEN=...
 ```
 
 Celld uses the standard AWS credential chain.
 
 For AWS S3 itself, `S3_ENDPOINT` is normally unnecessary and the region should be the actual AWS region.
 
-### Google Cloud Storage
+## Google Cloud Storage
 
-Use:
-
-```text
+```dotenv
 CELLD_BUCKET=gs://my-celld-fleet
 ```
 
-Celld uses Google Application Default Credentials. `GOOGLE_APPLICATION_CREDENTIALS` and `GOOGLE_SERVICE_ACCOUNT_KEY` are supported credential inputs.
+Use Google Application Default Credentials or the supported Google credential environment.
 
-### Azure Blob Storage
+## Azure Blob Storage
 
-Use:
-
-```text
+```dotenv
 CELLD_BUCKET=az://my-container
 AZURE_STORAGE_ACCOUNT_NAME=...
 ```
 
-Authentication can use an account key, managed identity, or workload identity.
+Use an account key, managed identity, or workload identity.
 
-Do not use local storage as the production fleet backend. `celld dev` has its own local object store specifically for development.
+Production fleet nodes require a supported cloud/object-store backend. The local object store used by `celld dev` is development-only.
 
 ---
 
-## 7. Running a node with Docker
+# Application environment versus node environment
 
-Celld publishes a release image at:
+Keep application Worker variables separate from Celld infrastructure variables.
+
+Application variables belong in this project's application contract:
 
 ```text
-ghcr.io/denoland/celld
+.env
+.env.example
+.env.prod.example
+celld/env.ts
 ```
 
-For production, pin the Celld version or image digest rather than following a floating image.
+Examples:
 
-The following is a Linux host-networking example. On platforms without host networking, publish only the public Worker port and attach the internal listener to a private network instead.
-
-Example:
-
-```bash
-docker run -d \
-  --name celld \
-  --restart unless-stopped \
-  --network host \
-  --stop-timeout 90 \
-  --env-file /etc/celld/node.env \
-  -v /var/lib/celld:/var/lib/celld \
-  ghcr.io/denoland/celld:<PINNED_VERSION>
+```text
+DATABASE_URL
+JWT_SIGNING_KEY
+PAYMENT_API_KEY
+LOG_LEVEL
 ```
 
-The environment file is infrastructure configuration and should be stored by your deployment/secrets system, not committed to the application repository.
+Celld node/fleet variables belong to infrastructure:
 
-The persistent mount must include the path configured by `CELLD_WATCH`. Never run two Celld processes against the same work directory at the same time.
+```text
+CELLD_BUCKET
+S3_ENDPOINT
+cloud credentials
+CELLD_ADDR
+CELLD_INTERNAL_ADDR
+CELLD_ADVERTISE
+CELLD_WATCH
+CELLD_DURABILITY
+runtime tuning
+```
 
-A 90-second stop timeout is a reasonable starting point with Celld's current 40-second default graceful-shutdown bound. If you increase `CELLD_SHUTDOWN_TOTAL_MS`, increase the supervisor/orchestrator stop grace as well.
+Do not copy node/fleet credentials into Worker vars.
 
-The same principles apply to Coolify, Docker Compose, Kubernetes, systemd, or another supervisor:
-
-1. persist `CELLD_WATCH`,
-2. pass bucket credentials securely,
-3. expose the Worker listener,
-4. keep the internal listener private,
-5. give SIGTERM enough time to complete a graceful handoff,
-6. pin the Celld release.
+Do not add them to `.env.example`.
 
 ---
 
-## 8. Health checks
+# Health checks
 
-Use the public health endpoint:
+Use:
 
 ```text
 /.well-known/celld/health
@@ -408,42 +786,34 @@ Example:
 curl -f http://127.0.0.1:8080/.well-known/celld/health
 ```
 
-A healthy node returns success.
+The health endpoint becomes unhealthy during:
 
-The endpoint reports `503` while the node is draining and while a joining/replacement node has not yet passed its first-readiness fleet gate.
+- graceful drain,
+- initial replacement/join readiness gating,
+- unhealthy runtime conditions.
 
-Use this endpoint for:
+Use it for:
 
-- load-balancer health checks,
-- rolling-update readiness,
-- container health checks,
-- post-restart validation.
+- load-balancer health,
+- platform readiness,
+- rolling-update gates,
+- post-restart checks.
 
 Do not use the private operator listener as a public health endpoint.
 
 ---
 
-## 9. Diagnosing the fleet
+# Diagnostics
 
-Before and after infrastructure changes, run:
+Use the same bucket environment/credentials as the fleet:
 
 ```bash
 celld diagnose
 ```
 
-with the same fleet-bucket environment and credentials used by the nodes.
+By default, diagnostics can verify the bucket's conditional-write behavior.
 
-By default, diagnose also tests the bucket's conditional write behavior. Use the command's read-only mode only when you explicitly do not want that write probe.
-
-The private internal listener also exposes `/state`, which is useful during drains and recovery:
-
-```bash
-curl http://127.0.0.1:8081/state
-```
-
-Only call operator endpoints from the trusted internal network.
-
-Useful operational checks include:
+Useful operator checks include:
 
 ```bash
 celld --version
@@ -451,20 +821,17 @@ celld diagnose
 celld cell list
 ```
 
+The private internal listener also exposes operator state such as:
+
+```bash
+curl http://PRIVATE_NODE_ADDRESS:8081/state
+```
+
+Only use private operator endpoints from the trusted internal network.
+
 ---
 
-## 10. First production deployment
-
-A clean first deployment is:
-
-```text
-1. Provision fleet bucket
-2. Start Celld node(s)
-3. Wait for public health
-4. Deploy application
-5. Wait for nodes to adopt deployment
-6. Test public application
-```
+# Application deployment
 
 From this repository:
 
@@ -475,7 +842,7 @@ pnpm deploy -- --dry-run
 pnpm deploy
 ```
 
-The deploy process must inherit the fleet object-store configuration and credentials:
+The deployment process must inherit:
 
 ```text
 CELLD_BUCKET
@@ -483,470 +850,425 @@ S3_ENDPOINT / region when applicable
 provider credentials
 ```
 
-Application Worker variables remain governed by `celld/env.ts`. The deploy wrapper builds the temporary `.wrangler.deploy.jsonc` and passes the fleet configuration through to native `celld deploy`.
+The project's deploy wrapper:
 
-Worker projects require `esbuild` on `PATH`, or `CELLD_ESBUILD` can point to it.
+1. loads the application environment,
+2. selects only allowed Worker variables,
+3. creates temporary `.wrangler.deploy.jsonc`,
+4. invokes native `celld deploy`,
+5. removes the temporary config.
+
+The canonical `wrangler.jsonc` remains committed and secret-free.
 
 ---
 
-## 11. What happens during `pnpm deploy`
-
-The deployment path is:
+## What Celld does during an application deploy
 
 ```text
-application source
-      |
-      v
-pnpm deploy
-      |
-      v
-temporary .wrangler.deploy.jsonc
+source + assets
       |
       v
 celld deploy
       |
       v
-modules + assets + manifest
+write modules/assets/manifest
       |
       v
-fleet deployment pointer updated last
+update deployment pointer last
       |
       v
-nodes poll and adopt
+nodes poll pointer
+      |
+      v
+nodes build replacement generation
+      |
+      v
+new requests switch to replacement
 ```
 
-Celld writes deployment contents before moving the fleet-wide current pointer.
+Celld nodes currently poll the deployment pointer according to `CELLD_DEPLOY_POLL_S`.
 
-Running nodes poll that pointer every `CELLD_DEPLOY_POLL_S` seconds, currently 30 seconds by default.
+A failed replacement build/adoption does not replace the generation already serving on that node.
 
-Nodes build the new deployment beside the one currently serving. New requests switch to the new deployment after it is ready, while already-started requests finish on the old deployment.
+Already-started requests finish on their original generation.
 
-A failed application build/adoption does not replace the deployment the node is already serving.
-
-No node restart is required for a normal application deployment.
-
-### Durable Objects during deployment
-
-Resident Durable Objects move to the new application generation at a safe point.
-
-Hibernatable WebSockets survive the move. Regular WebSockets may be closed when Celld forces a deployment move after `CELLD_DEPLOY_MAX_AGE_S`.
-
-Clients must therefore support reconnecting realtime transports.
-
-During the adoption window, one application version can call a Durable Object still running the adjacent version. Consecutive application releases should therefore keep internal RPC/message shapes compatible during that transition.
+No node restart is required.
 
 ---
 
-## 12. Serialize application deployments
+## Durable Objects and deployment transitions
 
-The fleet-wide deployment pointer is the application selector.
+During an application rollout, an adjacent application generation may briefly communicate with a Durable Object still running the previous generation.
 
-Do not run two production deploy writers for the same fleet at the same time.
+Keep internal RPC/message contracts compatible across consecutive releases.
 
-Your CI/CD or deployment platform should provide a per-fleet deployment lock:
+Resident objects eventually move to the new application generation.
+
+Realtime clients should support reconnecting WebSockets because node/runtime/deployment transitions can close transport connections.
+
+---
+
+## Serialize deployments
+
+Only one deployment writer should modify a fleet at one time.
+
+Enforce a per-fleet lock in CI/CD or the deployment platform:
 
 ```text
 production fleet
       |
-      +-- exactly one active pnpm deploy
+      +-- one active pnpm deploy
 ```
 
-This does not need to be implemented inside the application boilerplate.
+Do not create a second application-level release database just for this.
 
 ---
 
-## 13. Application rollback
+# Application rollback
 
-There is intentionally no custom rollback database or release registry in this boilerplate.
+The boilerplate does not maintain a separate rollback service.
 
-To return to a known-good application version:
+To return to a known-good application:
 
-1. check out or build the known-good source revision,
-2. supply its production Worker environment,
-3. run `pnpm deploy` again,
-4. let the fleet adopt that deployment normally.
+1. check out/build the known-good source revision,
+2. provide its production Worker variables,
+3. run `pnpm deploy`,
+4. let the fleet adopt it normally.
 
-The new deploy becomes the current fleet pointer.
+A code rollback does not undo durable state already written by a newer version.
 
-A code rollback does **not** roll back durable state that the newer application already wrote. Design persistent schema and internal messages with forward/backward compatibility in mind.
-
-Do not casually reverse Durable Object class/migration identity changes.
+Treat persistent identifiers, Durable Object class names, migration tags, D1 identities, queue identities, and similar resources as schema.
 
 ---
 
-## 14. Adding a node
+# Graceful shutdown
 
-Scaling up requires no join command.
+Celld handles SIGTERM and SIGINT as graceful shutdown signals.
 
-For the new node:
+During shutdown it:
 
-1. use the same `CELLD_BUCKET`,
-2. use the same durability mode and compatible Celld release,
-3. give it a unique internal listener/advertised address,
-4. give it its own persistent `CELLD_WATCH`,
-5. start it,
-6. wait for `/.well-known/celld/health` to return healthy,
-7. add its public Worker listener to ingress/load balancing.
+- marks the public health endpoint unhealthy,
+- stops accepting new public work,
+- finishes already accepted public requests,
+- preserves/replicates durable state,
+- hands ownership to peers where applicable,
+- exits within its configured shutdown budget.
 
-The nodes discover each other through fleet leases in the bucket.
-
-A new node does not need the addresses of every existing node.
-
----
-
-## 15. Removing a node
-
-Prefer a graceful stop.
-
-Send SIGTERM through your supervisor:
-
-```bash
-docker stop celld
-```
-
-or the equivalent systemd/Kubernetes/platform action.
-
-Celld then:
-
-1. reports public health as `503`,
-2. stops accepting new public work,
-3. finishes already accepted requests,
-4. proves cell state durable,
-5. hands cells to compatible peers in batches,
-6. shuts down within its configured total stop budget.
-
-Do not use SIGKILL for normal maintenance.
-
-For a multi-node fleet, remove nodes one at a time unless you have a specific recovery plan.
-
-If you scale a fleet down to one node, it remains durable, but durable writes must wait for the object store because there is no follower.
-
----
-
-## 16. Load balancer draining
-
-The preferred setup is a health-check-aware load balancer:
+The current main shutdown control is:
 
 ```text
-SIGTERM
-   |
-   v
-Celld health -> 503
-   |
-   v
-load balancer stops new traffic
-   |
-   v
-Celld completes existing requests and cell handoff
+CELLD_SHUTDOWN_TOTAL_MS
 ```
 
-If your ingress is only DNS-based and does not actively check node health, remove the node from DNS/ingress before stopping it and allow enough time for cached DNS and active connections to drain.
+Its current default is 40000 ms.
 
-The application should always be capable of retrying a request against another healthy node when a connection is closed during maintenance.
+Your platform stop grace must be longer than this value.
 
----
+For example, a 90-second container stop grace is a reasonable starting point with the current default.
 
-## 17. Upgrading the Celld runtime
-
-Application deployments and Celld runtime upgrades are different.
-
-Before changing the Celld binary/image:
-
-1. read the release notes and current Celld upgrade documentation,
-2. determine whether that specific version transition supports mixed versions,
-3. choose **rolling update** or **stopped-fleet update** accordingly,
-4. verify backups and stop-grace configuration,
-5. serialize runtime maintenance separately from application deployment.
-
-Do not assume every Celld version can coexist with its predecessor.
-
-Some Celld releases change peer protocols, bucket formats, replication/log formats, or durable metadata and explicitly require every old node to stop before any new-version fleet begins serving.
+If you increase `CELLD_SHUTDOWN_TOTAL_MS`, increase the platform stop grace too.
 
 ---
 
-## 18. Rolling update
+# Multi-node load-balancer drain
 
-Use this only when the Celld release documentation says the old and new releases may coexist.
-
-A typical multi-node rolling upgrade is:
+In a multi-node deployment, the preferred drain path is:
 
 ```text
-node-a old   node-b old   node-c old
+SIGTERM node A
+     |
+     v
+node A health -> 503
+     |
+     v
+load balancer stops sending new requests
+     |
+     v
+node A completes existing work + handoff
+     |
+     v
+node A exits
+```
+
+A health-aware load balancer therefore does not require a separate custom drain API.
+
+If your ingress only uses DNS and does not react to health checks, remove the node from DNS/ingress first and allow enough time for cached routing/active connections to clear before terminating it.
+
+---
+
+# Celld runtime upgrades
+
+Before upgrading Celld itself:
+
+1. read the exact Celld release notes,
+2. determine whether the old and new releases can coexist,
+3. choose rolling upgrade or stopped-fleet upgrade,
+4. pause application deploys,
+5. verify bucket and local-node backup/recovery posture,
+6. confirm stop-grace configuration,
+7. update the pinned image/binary only through the chosen procedure.
+
+Do not assume every Celld release pair supports mixed-version operation.
+
+---
+
+## Rolling multi-node upgrade
+
+Use a rolling update only when the release documentation says the two releases are compatible in a serving fleet.
+
+Example:
+
+```text
+node A old   node B old   node C old
     |
-    | stop/replace node-a
+    | replace A
     v
-node-a new   node-b old   node-c old
+node A new   node B old   node C old
     |
-    | wait for node-a healthy
-    | stop/replace node-b
+    | wait A healthy
+    | replace B
     v
-node-a new   node-b new   node-c old
+node A new   node B new   node C old
     |
-    | wait for node-b healthy
-    | stop/replace node-c
+    | wait B healthy
+    | replace C
     v
-node-a new   node-b new   node-c new
+node A new   node B new   node C new
 ```
 
 For each node:
 
-1. confirm the rest of the fleet has capacity,
-2. update the pinned Celld image/binary,
-3. send SIGTERM to the old process,
-4. let it complete its graceful drain,
-5. start the replacement using that node's persistent work directory,
-6. wait for `/.well-known/celld/health`,
-7. verify fleet diagnostics,
-8. continue to the next node.
+1. verify the remaining fleet has enough capacity,
+2. remove/drain the node through normal health-based shutdown,
+3. send SIGTERM,
+4. allow graceful handoff to finish,
+5. replace the pinned Celld image/binary,
+6. reuse that node's persistent `CELLD_WATCH`,
+7. start the replacement,
+8. wait for public health,
+9. run diagnostics,
+10. only then proceed to the next node.
 
-Celld's readiness gate intentionally delays a replacement from becoming healthy until the fleet has sufficiently settled.
+Do not advance the rollout merely because the container is running.
 
-Do not advance the rollout just because the process started. Advance when the health endpoint is healthy.
+Advance after readiness/health is established.
 
 ---
 
-## 19. Stopped-fleet update
+## Stopped-fleet upgrade
 
-Use this when the release notes say mixed versions are unsafe.
-
-This is a different procedure from a rolling update.
-
-```text
-old fleet serving
-      |
-      v
-stop application traffic
-stop deployment writers
-      |
-      v
-stop EVERY old Celld node
-      |
-      v
-wait for leases to expire
-      |
-      v
-backup bucket + node work directories
-prevent old binaries from restarting
-      |
-      v
-start new-version nodes
-      |
-      v
-wait healthy
-      |
-      v
-restore application traffic
-```
+Use this when the Celld release notes say mixed versions cannot safely coexist.
 
 Procedure:
 
-1. stop application deployment writers,
-2. stop or drain public application traffic,
-3. gracefully stop every old-version node,
-4. wait until every old node lease has expired,
-5. back up the stopped fleet bucket,
-6. back up each node's `CELLD_WATCH` directory,
-7. ensure the old version cannot automatically restart,
-8. update the Celld image/binary everywhere,
-9. start the new fleet,
-10. wait for healthy nodes and run diagnostics,
-11. restore application traffic.
-
-The default node lease lifetime is currently 10 seconds, but use the exact release's configuration and diagnostics rather than assuming a fixed sleep is sufficient.
-
-### Why local node data matters
-
-With fleet durability, follower disks can contain acknowledged writes that the bucket has not received yet.
-
-During an incompatible stopped-fleet upgrade, do not delete or replace local node data before you have a safe backup and the new release's upgrade procedure says it is no longer required.
-
----
-
-## 20. Single-node runtime upgrade
-
-A single-node deployment cannot provide application availability while its only Celld process is stopped.
-
-Its upgrade is therefore naturally:
-
 ```text
-remove/drain public traffic
+stop public traffic / maintenance mode
+stop application deploy writers
         |
         v
-SIGTERM Celld
+gracefully stop ALL old nodes
         |
         v
-graceful stop completes
+wait until old leases are gone
         |
         v
-replace binary/image
+backup bucket + local node state
         |
         v
-start node
+prevent old images from restarting
         |
         v
-wait healthy
+update all Celld versions
+        |
+        v
+start new fleet
+        |
+        v
+wait healthy + diagnose
         |
         v
 restore traffic
 ```
 
-When using `CELLD_DURABILITY=bucket`, acknowledged writes are already bucket-proven.
+Steps:
 
-Still preserve the node work directory unless the Celld release's upgrade instructions explicitly say otherwise.
+1. pause application deployment,
+2. stop or drain public traffic,
+3. gracefully stop every old-version node,
+4. verify old node leases are no longer live,
+5. back up the fleet bucket,
+6. preserve/back up every `CELLD_WATCH` volume,
+7. ensure the old image cannot auto-restart,
+8. update the Celld image/binary everywhere,
+9. start the new nodes,
+10. wait for readiness,
+11. run fleet diagnostics,
+12. restore public traffic.
 
----
-
-## 21. Stop-grace configuration
-
-Celld's current default:
-
-```text
-CELLD_SHUTDOWN_TOTAL_MS=40000
-```
-
-The supervisor must allow more time than this before sending SIGKILL.
-
-Examples of equivalent platform settings include:
-
-- Docker stop timeout,
-- systemd `TimeoutStopSec`,
-- Kubernetes `terminationGracePeriodSeconds`,
-- hosting-platform shutdown grace.
-
-Do not configure the platform grace to exactly the same value as Celld's internal bound. Leave margin for process/supervisor overhead.
-
-If shutdowns repeatedly hit the configured bound, investigate capacity, object-store latency, cell count, and handoff behavior rather than simply hiding the problem with a very large timeout.
+Follower disks can contain acknowledged writes that are not yet in the bucket, so do not delete local node storage as part of an incompatible upgrade.
 
 ---
 
-## 22. Deployment and upgrade checklist
+# Important operational environment variables
 
-### Before an application deploy
+These are infrastructure settings, not application Worker vars.
 
-- [ ] Correct production Worker variables available
-- [ ] Correct fleet bucket/credentials available
-- [ ] One deployment writer for this fleet
-- [ ] `pnpm check` passes
-- [ ] `pnpm deploy -- --dry-run` succeeds when appropriate
-- [ ] Adjacent application versions are RPC/message compatible
+| Variable | Purpose |
+| --- | --- |
+| `CELLD_BUCKET` | Fleet object-store bucket/container and optional prefix |
+| `CELLD_ADDR` | Local bind for the public Worker listener |
+| `CELLD_INTERNAL_ADDR` | Local bind for the private peer/operator listener |
+| `CELLD_ADVERTISE` | Stable hostname/private address peers dial |
+| `CELLD_WATCH` | Persistent local SQLite/replication work directory |
+| `CELLD_DURABILITY` | `bucket` or `fleet` durability posture |
+| `CELLD_NODE` | Optional explicit node-session ID; normally leave unset |
 
-### After an application deploy
+Common tuning/settings:
 
-- [ ] Nodes adopted the expected deployment
-- [ ] Public health endpoints are healthy
-- [ ] REST API responds
-- [ ] WebSocket reconnect path works
-- [ ] Logs show no deployment-adoption failures
+| Variable | Current default / role |
+| --- | --- |
+| `CELLD_DEPLOY_POLL_S` | Deployment pointer polling interval; currently 30 seconds |
+| `CELLD_DEPLOY_MAX_AGE_S` | Maximum old-generation residency after adoption; currently 60 seconds |
+| `CELLD_SHUTDOWN_TOTAL_MS` | Graceful process stop bound; currently 40000 ms |
+| `CELLD_READY_FLEET_GATE_MS` | Initial fleet readiness gate; currently 120000 ms |
+| `CELLD_OPERATION_DEADLINE_MS` | Normal operation deadline; currently 15000 ms |
+| `CELLD_ACTIVATIONS` | Concurrent cold-cell activation limit |
+| `CELLD_MAX_RESIDENT_CELLS` | Optional resident-cell cap |
+| `CELLD_MAX_RSS_MB` | Memory-pressure threshold |
+| `CELLD_IDLE_EVICT_S` | Optional idle-cell hibernation age |
+| `CELLD_PLACEMENT_WEIGHT` | Relative ownership share; defaults from CPU capacity |
+| `RUST_LOG` | Runtime logging filter |
 
-### Before a runtime upgrade
+Always consult `celld --help` for the exact version running in production.
 
-- [ ] Read the exact Celld release upgrade notes
-- [ ] Decide rolling vs stopped-fleet
-- [ ] Pin the new version/digest
-- [ ] Confirm persistent `CELLD_WATCH`
-- [ ] Confirm fleet bucket backup/recovery posture
-- [ ] Confirm stop grace > `CELLD_SHUTDOWN_TOTAL_MS`
-- [ ] Confirm surviving fleet capacity for rolling update
-- [ ] Pause application deploys while runtime maintenance is in progress
+---
 
-### After a runtime upgrade
+# Deployment checklists
 
-- [ ] `celld --version` shows the intended version
-- [ ] `/.well-known/celld/health` is healthy
-- [ ] `celld diagnose` succeeds
+## Single-node first deployment
+
+- [ ] Fleet bucket created
+- [ ] Persistent `CELLD_WATCH` volume created
+- [ ] `CELLD_ADDR=0.0.0.0:8080`
+- [ ] `CELLD_INTERNAL_ADDR=0.0.0.0:8081`
+- [ ] private `CELLD_ADVERTISE` configured
+- [ ] `CELLD_DURABILITY=bucket`
+- [ ] `CELLD_NODE` left unset
+- [ ] port 8080 routed through ingress
+- [ ] port 8081 private only
+- [ ] Celld health successful
+- [ ] `pnpm check`
+- [ ] `pnpm deploy`
 - [ ] REST request succeeds
-- [ ] Durable Object write succeeds
+- [ ] WebSocket/reconnect succeeds
+
+## Multi-node first deployment
+
+- [ ] Fleet bucket created
+- [ ] Private cross-node network working
+- [ ] Separate persistent `CELLD_WATCH` for every node
+- [ ] all nodes bind public `0.0.0.0:8080`
+- [ ] all nodes bind internal `0.0.0.0:8081`
+- [ ] every node has a unique peer-reachable `CELLD_ADVERTISE`
+- [ ] `CELLD_DURABILITY=fleet`
+- [ ] `CELLD_NODE` left unset
+- [ ] port 8081 is not public
+- [ ] all nodes pass health/readiness
+- [ ] fleet diagnostics succeed
+- [ ] healthy nodes added to public ingress
+- [ ] `pnpm deploy`
+- [ ] REST request succeeds
+- [ ] Durable Object writes succeed
+- [ ] WebSocket/reconnect succeeds
+
+## Before an application deploy
+
+- [ ] correct Worker variables supplied
+- [ ] correct fleet bucket credentials supplied
+- [ ] only one active deployment writer
+- [ ] `pnpm check` passes
+- [ ] dry-run succeeds when appropriate
+- [ ] adjacent release RPC/message contracts remain compatible
+
+## Before a Celld runtime upgrade
+
+- [ ] exact old/new release notes reviewed
+- [ ] rolling vs stopped-fleet decision made
+- [ ] new Celld version/digest pinned
+- [ ] application deploys paused
+- [ ] persistent node volumes confirmed
+- [ ] bucket backup/recovery posture confirmed
+- [ ] stop grace exceeds Celld shutdown bound
+- [ ] surviving capacity confirmed for rolling maintenance
+
+## After a Celld runtime upgrade
+
+- [ ] intended `celld --version`
+- [ ] public health healthy
+- [ ] `celld diagnose` succeeds
+- [ ] REST API succeeds
+- [ ] Durable Object read/write succeeds
 - [ ] WebSocket connection/reconnect succeeds
-- [ ] No unexpected recovery/handoff errors in logs
+- [ ] logs contain no unexpected handoff/recovery errors
 
 ---
 
-## 23. Suggested production shapes
+# Ownership boundary
 
-### Small application
-
-```text
-1 Celld node
-CELLD_DURABILITY=bucket
-managed object store
-persistent CELLD_WATCH
-public health check
-```
-
-Use this when simplicity matters more than maintenance availability and object-store write latency is acceptable.
-
-### Normal highly available application
-
-```text
-2-3+ Celld nodes
-CELLD_DURABILITY=fleet
-same fleet bucket
-private peer network
-persistent work directory per node
-health-check-aware load balancer
-rolling upgrades when release-compatible
-```
-
-This is the recommended shape when the application should stay available through ordinary node maintenance.
-
----
-
-## 24. What the application repository owns
-
-This repository should own:
+The application repository owns:
 
 ```text
 wrangler.jsonc
-Celld application source
-Worker environment contract
+Worker / Hono / Durable Object code
 frontend/static assets
-application deploy wrapper
-application architecture
-deployment documentation
+application environment contract
+application deployment wrapper
+ARCHITECTURE.md
+DEPLOY.md
 ```
 
-Infrastructure should own:
+Infrastructure owns:
 
 ```text
-Celld version/image
+Celld image/version
 CELLD_BUCKET
-bucket credentials
+object-store credentials
 CELLD_ADDR
 CELLD_INTERNAL_ADDR
 CELLD_ADVERTISE
-CELLD_NODE
 CELLD_WATCH volume
 CELLD_DURABILITY
-load balancer / TLS
-private network
-supervisor stop grace
-node scaling
-node/runtime upgrades
+private network / overlay
+public ingress / TLS
+health checking
+stop grace
+node count
+runtime upgrades
 deployment serialization
 ```
 
-That boundary keeps the boilerplate portable across infrastructure platforms.
+That separation keeps the boilerplate portable across Coolify, Docker Compose, Kubernetes, Nomad, systemd, and other deployment systems.
 
 ---
 
-## 25. Operational rule of thumb
+# Operational rule of thumb
 
-For application code:
+## Single-node
 
-> Deploy through `pnpm deploy`; Celld nodes adopt it without restart.
+> Bind both listeners to `0.0.0.0` inside the container, keep the internal listener private, use bucket durability, and accept a maintenance window when the Celld process itself is upgraded.
 
-For node maintenance:
+## Multi-node
 
-> Stop nodes gracefully. Roll one at a time only when the two Celld versions are explicitly compatible.
+> Bind both listeners to `0.0.0.0` inside each container, advertise a unique private peer-reachable address for each node, use fleet durability, and remove/replace one node at a time when the Celld release supports rolling compatibility.
 
-For incompatible runtime upgrades:
+## Application deployment
 
-> Stop the whole old fleet first, preserve the bucket and node data, then start the new fleet.
+> Run `pnpm deploy` once per fleet. Do not deploy application code node-by-node.
 
-For networking:
+## Runtime upgrade
 
-> Public Worker listener may face ingress; internal peer/operator listener stays private.
+> Check release compatibility first. Rolling update when explicitly compatible; stopped-fleet update when not.
 
-For durability:
+## Node identity
 
-> Single node: bucket durability is the explicit simple posture. Multi-node: fleet durability is the normal posture.
+> Leave `CELLD_NODE` unset unless an operator has a specific need to control the generated node-session ID.
