@@ -137,9 +137,9 @@ node work directory (CELLD_WATCH)
   runtime work files
 ```
 
-The fleet object store is authoritative shared durability.
+The fleet object store is the long-term shared store for deployment and durable state.
 
-The node work directory must still be treated as persistent node state. In fleet durability mode, a follower disk can contain acknowledged writes that have not yet reached the bucket when maintenance begins.
+The node work directory is also part of the durability system and must be treated as persistent node state. In fleet durability mode, a follower disk can contain acknowledged writes that have not yet reached the bucket when maintenance begins.
 
 Do not use an ephemeral container filesystem for `CELLD_WATCH`.
 
@@ -253,7 +253,7 @@ These are **infrastructure variables**. They do not belong in this repository's 
 | `CELLD_ADDR` | Public Worker listener |
 | `CELLD_INTERNAL_ADDR` | Private peer/operator listener |
 | `CELLD_ADVERTISE` | Address other nodes use to reach this node |
-| `CELLD_NODE` | Optional explicit node-session ID |
+| `CELLD_NODE` | Optional explicit node-session ID; keep it unique among concurrently live nodes |
 | `CELLD_WATCH` | Persistent local SQLite/replication work directory |
 | `CELLD_DURABILITY` | `bucket` or `fleet` |
 
@@ -343,6 +343,8 @@ ghcr.io/denoland/celld
 
 For production, pin the Celld version or image digest rather than following a floating image.
 
+The following is a Linux host-networking example. On platforms without host networking, publish only the public Worker port and attach the internal listener to a private network instead.
+
 Example:
 
 ```bash
@@ -358,7 +360,7 @@ docker run -d \
 
 The environment file is infrastructure configuration and should be stored by your deployment/secrets system, not committed to the application repository.
 
-The persistent mount must include the path configured by `CELLD_WATCH`.
+The persistent mount must include the path configured by `CELLD_WATCH`. Never run two Celld processes against the same work directory at the same time.
 
 A 90-second stop timeout is a reasonable starting point with Celld's current 40-second default graceful-shutdown bound. If you increase `CELLD_SHUTDOWN_TOTAL_MS`, increase the supervisor/orchestrator stop grace as well.
 
