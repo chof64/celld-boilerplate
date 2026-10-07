@@ -50,8 +50,9 @@ function createDeployConfig(
 }
 
 async function run(): Promise<number> {
-  const environment = selectWorkerEnvironment(loadApplicationEnvironment());
-  const deployConfig = createDeployConfig(environment);
+  const deploymentEnvironment = loadApplicationEnvironment();
+  const workerEnvironment = selectWorkerEnvironment(deploymentEnvironment);
+  const deployConfig = createDeployConfig(workerEnvironment);
 
   writeFileSync(deployConfigPath, JSON.stringify(deployConfig, null, 2).concat("\n"), {
     encoding: "utf8",
@@ -63,7 +64,7 @@ async function run(): Promise<number> {
     ["deploy", "--config", deployConfigPath, ...process.argv.slice(2)],
     {
       stdio: "inherit",
-      env: process.env,
+      env: deploymentEnvironment,
     },
   );
 

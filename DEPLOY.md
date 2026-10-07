@@ -249,6 +249,62 @@ Serialize production deploys so only one writer updates a fleet at a time.
 
 Reference: [Deploy an application](https://github.com/denoland/celld/blob/main/docs/README.md#deploy-an-application)
 
+### GitHub Actions
+
+The boilerplate includes `.github/workflows/deploy.yml`.
+
+It deploys on pushes to `main` and can also be started manually from `main` with `workflow_dispatch`. Production runs are serialized with GitHub Actions concurrency so two deploys cannot update the same fleet at the same time. Restrict the `production` GitHub Environment to deployments from `main` as well.
+
+In the `production` GitHub Environment, configure these variables:
+
+```text
+CELLD_VERSION
+CELLD_BUCKET
+AWS_REGION
+S3_ENDPOINT       # omit for AWS S3
+```
+
+Set `CELLD_VERSION` to the exact Celld release tag used by the running fleet, such as `v0.1.0`. The workflow requires the variable and installs that release, so update it when the fleet is upgraded.
+
+Configure these secrets on the same GitHub Environment:
+
+```text
+ENV_FILE
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_SESSION_TOKEN  # optional
+```
+
+`ENV_FILE` contains application runtime variables only, as newline-separated `KEY=value` pairs. For example:
+
+```dotenv
+GREETING=Hello from production
+```
+
+The workflow passes `CELLD_BUCKET`, `S3_ENDPOINT`, `AWS_REGION`, and the AWS credential secrets directly to the dry-run and deploy steps. For an S3-compatible provider, set its endpoint and region (Cloudflare R2 uses `AWS_REGION=auto`). For AWS S3, omit `S3_ENDPOINT` and use the bucket's AWS region. `AWS_SESSION_TOKEN` is optional for temporary credentials.
+
+It normally does **not** need node-only settings such as `CELLD_ADDR`, `CELLD_INTERNAL_ADDR`, `CELLD_ADVERTISE`, `CELLD_WATCH`, or `CELLD_DURABILITY`; those belong on the running Celld nodes.
+
+The workflow:
+
+```text
+CELLD_VERSION -> install pinned Celld -> pnpm check -> ENV_FILE -> .env --+
+                                                                          +--> dry-run -> deploy
+CELLD_BUCKET + S3 settings + AWS credential secrets ---------------------+
+```
+
+The deploy wrapper merges `.env` with the process environment and passes the result to Celld. Only variables explicitly declared in `celld/env.ts` are copied into Worker bindings. The bucket credentials are available to the deploy CLI and are not written into `.env` or exposed as Worker bindings.
+
+The workflow runs dependency installation and checks before it reads `ENV_FILE`. It then rejects Celld and S3 settings in the file, writes `.env` with restrictive file permissions, and never intentionally prints its contents. The file is already ignored by Git. The S3 credentials are scoped to the deployment steps rather than dependency installation and checks.
+
+To configure the secret with GitHub CLI from a local production env file:
+
+```bash
+gh secret set ENV_FILE --env production < .env.production
+```
+
+Add the variables and credential secrets through the `production` GitHub Environment settings.
+
 ---
 
 # 2. Upgrade Celld
