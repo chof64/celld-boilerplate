@@ -7,8 +7,9 @@ The project keeps the public API simple:
 - **Celld** is the runtime and provides Workers, Durable Objects, Queues, Workflows, Cron, KV, D1, R2, and other bindings.
 - **Hono** is the public HTTP/WebSocket gateway.
 - **Durable Objects** own stateful entities and long-lived coordination.
+- **RESTful HTTP through Hono** is the default public API for web, mobile, and other clients.
 - **Native Celld RPC** is preferred for internal method-style calls to Durable Objects.
-- **Hono RPC** gives TypeScript web and mobile clients a typed HTTP client.
+- **Hono's typed client** is optional convenience for TypeScript consumers; it does not define the public API contract.
 - **Zod + Standard Schema** validate untrusted HTTP input.
 - **Native `celld dev` and `celld deploy`** remain visible rather than being hidden behind a custom framework.
 
@@ -25,11 +26,11 @@ Public Celld Worker
         |
         v
       Hono
-   /    |     \
-  /     |      \
-HTTP   RPC    WebSocket upgrade
-        |          |
-        v          v
+   /           \
+REST         WebSocket upgrade
+  |               |
+  | native RPC    |
+  v               v
       Durable Objects
       state + coordination
 ```
@@ -100,9 +101,18 @@ To intentionally reset local Celld state, use Celld directly:
 celld dev . --clean
 ```
 
-## Typed web and mobile clients
+## Public API: REST first
 
-Hono's typed client can use the exported `AppType` while still speaking ordinary HTTPS:
+The default client contract is an ordinary RESTful HTTP API:
+
+```text
+GET  /api/rooms/:roomId
+PUT  /api/rooms/:roomId/topic
+```
+
+Web, native mobile, third-party clients, scripts, and services can call these endpoints with any standard HTTP client. A client does not need Hono-specific packages.
+
+For TypeScript projects, Hono's typed client may be used as an optional convenience over those same REST routes:
 
 ```ts
 import { hc } from "hono/client";
@@ -115,9 +125,9 @@ const response = await api.api.rooms[":roomId"].$get({
 });
 ```
 
-This is a public HTTP client, not direct Celld Durable Object RPC. Inside the Worker, routes use native Celld bindings/RPC to reach stateful objects.
+The REST endpoint remains the contract. The Hono client only adds compile-time convenience for TypeScript consumers and should not drive the API design.
 
-For a larger polyrepo or mobile setup, expose the API type from a shared type-only package rather than importing server implementation code into the client bundle.
+Inside the Worker, Hono routes may then use native Celld bindings/RPC to reach stateful Durable Objects.
 
 ## Environment variables
 
