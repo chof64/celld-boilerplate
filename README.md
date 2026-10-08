@@ -144,7 +144,7 @@ Inside the Worker, Hono routes may then use native Celld bindings/RPC to reach s
 
 ## Hono route files (default)
 
-The public API uses **one descriptively named TypeScript file per endpoint URL**, with a flat `celld/http/routes/` directory. HTTP methods for the same URL live together. Unlike Next.js App Router, neither directories nor filenames determine URL paths.
+The public API uses **one descriptively named TypeScript file per endpoint URL**, flat under `celld/http/routes/` by default. HTTP methods for the same URL live together. **Related route files may be grouped into subfolders** once the flat directory becomes hard to navigate. Unlike Next.js App Router, neither directories nor filenames determine URL paths.
 
 ```text
 celld/http/
@@ -162,6 +162,32 @@ Each endpoint file exports a small Hono sub-app that declares its **full public 
 `celld/http/app.ts` imports the sub-apps and explicitly composes them with chained `.route("/", subApp)` calls. No auto-discovery or extra router is introduced; chaining preserves `AppType` inference for Hono's optional typed client.
 
 To add `POST /api/rooms/:roomId/typing`, add `celld/http/routes/room-typing.ts` exporting a Hono sub-app with `.post("/api/rooms/:roomId/typing", ...)`, import it into `app.ts`, and add `.route("/", roomTypingRoute)`. Test the public endpoint in `tests/http.test.ts`. Keep shared HTTP validation in named schema files as needed and domain logic in reusable plain functions.
+
+### Optional folders for related endpoints
+
+When several related files make `routes/` unwieldy, group them by feature or resource **for source-code organization only**. For example, the flat `rooms.ts` and `room-*.ts` files could become:
+
+```text
+celld/http/
+├── app.ts
+└── routes/
+    ├── health.ts
+    └── room/
+        ├── details.ts    # GET /api/rooms/:roomId (formerly rooms.ts)
+        ├── messages.ts   # GET/POST /api/rooms/:roomId/messages
+        ├── socket.ts     # GET /api/rooms/:roomId/socket
+        └── params.ts     # shared validation
+```
+
+`app.ts` still imports and mounts **each endpoint module** directly. Only the import paths change:
+
+```ts
+import { roomRoute } from "./routes/room/details";
+import { roomMessagesRoute } from "./routes/room/messages";
+import { roomSocketRoute } from "./routes/room/socket";
+```
+
+Also adjust any relative schema imports (for example, `"./params"`). Keep the full public URLs declared in each route module and the chained `.route("/", ...)` composition in `app.ts` unchanged. **A `room/` folder does not create an `/room` URL prefix or auto-register routes.** Existing API URLs, Celld bindings, and tests should continue to behave the same; run `pnpm check` after the move. Do not add folders until grouping improves discoverability.
 
 See [Hono's route grouping documentation](https://hono.dev/docs/api/routing#grouping-without-changing-base) and [typed-client route grouping](https://hono.dev/examples/grouping-routes-rpc).
 
