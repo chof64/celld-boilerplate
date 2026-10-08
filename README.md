@@ -11,6 +11,8 @@ A **backend-only** starter for [Celld](https://github.com/denoland/celld) built 
 
 Both follow the [same shared architecture principles](./ARCHITECTURE.md#1-shared-architecture-principles), [Celld deployment runbook](./DEPLOY.md), env allowlist, `ENV_FILE` secret model and production workflow. They differ only where their framework responsibilities require it.
 
+Read [SYNC.md](./SYNC.md) when changing a convention that applies to both starters.
+
 ## Mental model
 
 ```text
