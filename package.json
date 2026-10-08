@@ -1,5 +1,5 @@
 {
-  "name": "celld-boilerplate",
+  "name": "celld-hono",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,6 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "dev": "pnpm dev:celld",
     "dev:celld": "tsx celld/scripts/dev.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
