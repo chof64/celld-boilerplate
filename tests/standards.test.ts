@@ -14,7 +14,7 @@ describe("shared Celld starter standards", () => {
     expect(from).toBeGreaterThanOrEqual(0);
     expect(to).toBeGreaterThan(from);
     const shared = architecture.slice(from, to);
-    expect(shared.match(/^\\d+\\. \\*\\*/gm)).toHaveLength(13);
+    expect(shared.match(/^\d+\. \*\*/gm)).toHaveLength(13);
     expect(shared).toContain("chof64/celld-hono");
     expect(shared).toContain("chof64/celld-waku");
     expect(shared).toContain("ENV_FILE");
