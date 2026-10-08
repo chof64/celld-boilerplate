@@ -2,8 +2,8 @@ import { sValidator } from "@hono/standard-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import type { Env } from "../../../../../../env";
-import { roomParams } from "../params";
+import type { Env } from "../../env";
+import { roomParams } from "./room-params";
 
 const messageBody = z.object({
   userName: z.string().trim().min(1).max(40),
@@ -11,16 +11,20 @@ const messageBody = z.object({
 });
 
 export const roomMessagesRoute = new Hono<{ Bindings: Env }>()
-  .get("/", sValidator("param", roomParams), async (c) => {
-    const { roomId } = c.req.valid("param");
-    const room = c.env.ROOM.getByName(roomId);
+  .get(
+    "/api/rooms/:roomId/messages",
+    sValidator("param", roomParams),
+    async (c) => {
+      const { roomId } = c.req.valid("param");
+      const room = c.env.ROOM.getByName(roomId);
 
-    return c.json({
-      messages: await room.listMessages(),
-    });
-  })
+      return c.json({
+        messages: await room.listMessages(),
+      });
+    },
+  )
   .post(
-    "/",
+    "/api/rooms/:roomId/messages",
     sValidator("param", roomParams),
     sValidator("json", messageBody),
     async (c) => {

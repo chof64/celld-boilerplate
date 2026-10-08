@@ -144,33 +144,26 @@ Inside the Worker, Hono routes may then use native Celld bindings/RPC to reach s
 
 ## Hono route files (default)
 
-The public API uses a **Next.js App Router-inspired layout**: one `route.ts` file per URL path. HTTP methods for the same URL (such as `GET` and `POST` for messages) live in that file. This is an organization convention, **not** automatic file-based routing; Hono still explicitly composes every route.
+The public API uses **one descriptively named TypeScript file per endpoint URL**, with a flat `celld/http/routes/` directory. HTTP methods for the same URL live together. Unlike Next.js App Router, neither directories nor filenames determine URL paths.
 
 ```text
 celld/http/
-├── app.ts                                   # top-level Hono composition
+├── app.ts                   # Hono composition
 └── routes/
-    ├── health/
-    │   └── route.ts                         # GET /health
-    └── api/
-        └── rooms/
-            ├── index.ts                     # mounts the room endpoints
-            └── [roomId]/
-                ├── params.ts                # shared room parameter schema
-                ├── route.ts                 # GET /api/rooms/:roomId
-                ├── messages/
-                │   └── route.ts             # GET and POST /api/rooms/:roomId/messages
-                └── socket/
-                    └── route.ts             # GET /api/rooms/:roomId/socket (WebSocket)
+    ├── health.ts            # GET /health
+    ├── rooms.ts             # GET /api/rooms/:roomId
+    ├── room-messages.ts     # GET/POST /api/rooms/:roomId/messages
+    ├── room-socket.ts       # GET /api/rooms/:roomId/socket (WebSocket)
+    └── room-params.ts       # shared path-parameter schema
 ```
 
-Each `route.ts` exports a Hono sub-app whose handlers use `"/"` because the parent mounts it at the public URL. A directory named `[roomId]` is a readability convention; the corresponding Hono path uses `:roomId`.
+Each endpoint file exports a small Hono sub-app that declares its **full public URL**. A parameter like `:roomId` is expressed in the Hono route path, not by creating a `[roomId]` directory. `room-messages.ts` contains both `GET` and `POST` because both methods use the same URL.
 
-For example, `celld/http/routes/api/rooms/index.ts` registers `roomRoute`, `roomMessagesRoute`, and `roomSocketRoute` using `.route("/:roomId", ...)` and its subpaths. Then `celld/http/app.ts` mounts the rooms group at `/api/rooms`. **Mount sub-apps after defining their routes**, and chain `.get()`, `.post()`, and `.route()` so the exported `AppType` retains Hono client inference.
+`celld/http/app.ts` imports the sub-apps and explicitly composes them with chained `.route("/", subApp)` calls. No auto-discovery or extra router is introduced; chaining preserves `AppType` inference for Hono's optional typed client.
 
-To add `POST /api/rooms/:roomId/typing`, create `[roomId]/typing/route.ts`, export a sub-app with a `.post("/", ...)` handler, and register it in `rooms/index.ts` with `.route("/:roomId/typing", typingRoute)`. Add an HTTP test in `tests/http.test.ts`. Keep shared validation near the routes that use it, and move reusable business behavior into plain functions rather than accumulating it in `app.ts`.
+To add `POST /api/rooms/:roomId/typing`, add `celld/http/routes/room-typing.ts` exporting a Hono sub-app with `.post("/api/rooms/:roomId/typing", ...)`, import it into `app.ts`, and add `.route("/", roomTypingRoute)`. Test the public endpoint in `tests/http.test.ts`. Keep shared HTTP validation in named schema files as needed and domain logic in reusable plain functions.
 
-References: [Hono route grouping](https://hono.dev/docs/api/routing#grouping) and [grouping routes for typed clients](https://hono.dev/examples/grouping-routes-rpc).
+See [Hono's route grouping documentation](https://hono.dev/docs/api/routing#grouping-without-changing-base) and [typed-client route grouping](https://hono.dev/examples/grouping-routes-rpc).
 
 ## Environment variables
 
