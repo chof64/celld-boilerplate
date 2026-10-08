@@ -29,7 +29,7 @@ These principles are intentionally **identical in both Celld starters**. When ch
 | [`chof64/celld-hono`](https://github.com/chof64/celld-hono) | Backend-only APIs and Celld stateful services | Hono REST/WebSocket routes, Durable Objects, Queues and Workflows |
 | [`chof64/celld-waku`](https://github.com/chof64/celld-waku) | Full-stack React web applications | Waku pages, RSC/SSR, client components, Server Actions and API routes |
 
-They share **deployment, environment, security, and architectural principles**, not identical framework source code. They may run as separate Worker scripts in the same Celld fleet, connected by service bindings.
+They share **deployment, environment, security, and architectural principles**, not identical framework source code. They may coexist as separate Worker scripts **only when composed into one Celld application deployment**, connected by service bindings. Independently deploying each starter to the same fleet replaces its current application; it does not merge scripts.
 
 ## 2. Default stack
 
