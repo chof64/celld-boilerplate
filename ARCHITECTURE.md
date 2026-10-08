@@ -2,21 +2,34 @@
 
 This document defines the architecture standard implemented by this boilerplate.
 
-The goal is a small, opinionated Celld application shape with sensible defaults for development and production. It is intentionally not a framework on top of Celld.
+The goal is a small, opinionated **backend-only** Celld application shape with sensible defaults for development and production. It is intentionally not a framework on top of Celld.
 
-## 1. Principles
+## 1. Shared architecture principles
 
-1. **Celld remains the runtime abstraction.** Use Workers, Durable Objects, Queues, Workflows, Cron, KV, D1, R2, service bindings, and other Celld-supported surfaces directly.
-2. **Hono owns the public HTTP boundary, with RESTful HTTP as the default client contract.** It handles routing, authentication/authorization context, validation, middleware, errors, and public HTTP/WebSocket URLs.
-3. **Durable Objects own stateful identities.** Use them when one logical entity needs a single consistent owner, durable local state, serialized coordination, alarms, or long-lived connections.
-4. **Prefer native Celld RPC internally.** If a Worker wants to tell a Durable Object to do something, method-style RPC is normally clearer than inventing an internal HTTP endpoint.
-5. **Use Durable Object `fetch()` when HTTP semantics are actually useful.** WebSocket upgrades are the main example.
-6. **Keep domain logic independent of transport.** Hono routes, queue consumers, workflows, and Durable Objects should be able to call shared feature code rather than embedding business logic in transport handlers.
-7. **Use one canonical `wrangler.jsonc`.**
-8. **Use native `celld dev` and `celld deploy`.**
-9. **Keep application environment separate from fleet/infrastructure environment.**
-10. **Organize public Hono endpoints in descriptively named files, flat by default.** Related routes may move into optional feature folders as the API grows; keep HTTP methods for the same URL together and explicitly compose routes with Hono.
-11. **Add complexity only after a concrete requirement appears.**
+These principles are intentionally **identical in both Celld starters**. When changing a shared convention, update both repositories together; framework-specific sections below may differ.
+
+1. **Celld is the execution and deployment runtime.** Use its supported Workers, Durable Objects, service bindings, Queues, Workflows, Cron, KV, D1, and R2 surfaces directly instead of inventing a Celld SDK.
+2. **Keep framework conventions native.** Hono owns backend HTTP routes; Waku owns React pages, layouts, Server Components, client components, API routes, and Server Actions. Do not implement a competing router.
+3. **Use an explicit public contract.** RESTful HTTP is the default for mobile clients, webhooks, integrations, and shared APIs. Waku Server Actions are suitable for application UI mutations, not a replacement for external API contracts.
+4. **Give stateful entities a clear owner.** Durable Objects coordinate entity-local work. Prefer native Durable Object RPC for method calls when available; use `fetch()` for HTTP or WebSocket semantics. Waku can reach a separate Hono/DO Worker through a service binding.
+5. **Keep business logic independent of transport.** HTTP routes, Server Actions, Queues, Workflows, and Durable Objects should delegate reusable domain operations to plain modules, rather than duplicating rules.
+6. **Validate and authorize at every trust boundary.** Use Zod as the default schema implementation and Standard Schema where a framework provides a compatible integration. Treat Server Actions as public server entrypoints.
+7. **Make state ownership explicit.** For Xicar, PlanetScale Postgres and application S3 remain authoritative; Celld coordination/cache state is rebuildable unless a feature deliberately establishes a different persistence contract.
+8. **Use one canonical root `wrangler.jsonc`.** It declares binding identities and entrypoints but contains no production secrets. Do not add separate development, staging, or production Wrangler files by default.
+9. **Separate application variables from fleet credentials.** `celld/env.ts` declares the application allowlist; `.env` supplies local values, and process variables override it. CI supplies application values via `ENV_FILE`; Celld bucket, node, and storage credentials remain process/infrastructure settings.
+10. **Keep the Celld commands native and visible.** Project scripts may prepare environment and build artifacts, but `celld dev` and `celld deploy` own execution and publication. Do not deploy to Celld with `wrangler deploy`.
+11. **Standardize operations across both starters.** Use the same production GitHub Environment contract, pinned `CELLD_VERSION`, serialized deploys, dry-run before publish, and the same single-node/multi-node/upgrade runbook.
+12. **Protect persistent identities.** Treat Worker names, Durable Object class and binding names, migration tags, service bindings, and storage identities as schema. Append migrations intentionally; do not casually rename live resources.
+13. **Keep the baseline small.** Development and production are the only default modes. Add optional feature folders, framework libraries, state stores, extra environments, and runtime bindings only when needed.
+
+### Sibling starters
+
+| Repository | Primary purpose | Routing and runtime boundary |
+| --- | --- | --- |
+| [`chof64/celld-hono`](https://github.com/chof64/celld-hono) | Backend-only APIs and Celld stateful services | Hono REST/WebSocket routes, Durable Objects, Queues and Workflows |
+| [`chof64/celld-waku`](https://github.com/chof64/celld-waku) | Full-stack React web applications | Waku pages, RSC/SSR, client components, Server Actions and API routes |
+
+They share **deployment, environment, security, and architectural principles**, not identical framework source code. They may run as separate Worker scripts in the same Celld fleet, connected by service bindings.
 
 ## 2. Default stack
 
@@ -302,47 +315,36 @@ Clients must tolerate reconnects. Durable Object ownership can move, and a WebSo
 
 ## 8. Project layout
 
-This repository represents the **mixed-project** layout: Celld is one part of a repository that may also contain a frontend.
+This is a **backend-only** Celld starter. It does not ship a frontend or static-asset application; use [celld-waku](https://github.com/chof64/celld-waku) for React SSR and full-stack web projects.
 
 ```text
 project/
-├── src/                         # frontend/application source, if present
-├── public/
-│
 ├── celld/
-│   ├── index.ts                 # runtime composition only
-│   ├── env.ts                   # explicit Worker env contract
-│   │
+│   ├── index.ts                 # Worker and Durable Object exports
+│   ├── env.ts                   # Allowed Worker variables + bindings
 │   ├── http/
 │   │   ├── app.ts               # Hono route composition
-│   │   └── routes/              # named endpoint files; optional feature folders
+│   │   └── routes/              # One named file per public endpoint
 │   │       ├── health.ts
 │   │       ├── rooms.ts
 │   │       ├── room-messages.ts
 │   │       ├── room-socket.ts
 │   │       └── room-params.ts
-│   │
 │   ├── durable-objects/
-│   │   └── room.ts              # example stateful entity
-│   │
+│   │   └── room.ts
 │   └── scripts/
-│       ├── env.ts               # shared env-loading helpers
-│       ├── dev.ts               # writes .dev.vars + celld dev
-│       └── deploy.ts            # temporary deploy config + celld deploy
-│
+│       ├── env.ts
+│       ├── dev.ts
+│       └── deploy.ts
+├── tests/
 ├── wrangler.jsonc
-├── .env
 ├── .env.example
 ├── .env.prod.example
-├── .dev.vars                    # generated, ignored
-├── .wrangler.deploy.jsonc       # generated, ignored
-├── .celld/                      # local Celld state, ignored
-└── ...
+├── .dev.vars                    # Generated; ignored
+└── .wrangler.deploy.jsonc      # Generated; ignored
 ```
 
-Do not create empty architectural directories. Add `queues/`, `workflows/`, `scheduled/`, `features/`, or `migrations/` when the application actually needs them.
-
-For a Celld-only repository, an extra `celld/` namespace is unnecessary; ordinary `src/` can be the application root.
+Keep this `celld/` namespace consistent with the Waku starter's runtime scripts. Do not add empty `queues/`, `workflows/`, or `features/` directories until needed.
 
 ## 9. Runtime entrypoint
 
@@ -530,65 +532,23 @@ The root location is intentional. Celld resolves project-relative entrypoints, a
 
 The canonical file contains structural configuration and remains free of production secrets.
 
-## 17. Development
+## 17. Backend development
 
-In a mixed frontend/Celld project:
+`pnpm dev` and `pnpm dev:celld` start the same Celld backend development runtime. The wrapper validates allowed variables from optional `.env`, writes ignored `.dev.vars`, then executes native `celld dev .`. Persistent local state lives under `.celld/dev`.
 
-```text
-pnpm dev        -> frontend framework
-pnpm dev:celld  -> Celld
-```
+The full-stack sibling uses `pnpm dev` for Waku's own Vite dev server and `pnpm dev:celld` for production-like Celld execution. Both starters keep the Celld command visible.
 
-`pnpm dev:celld`:
+For an intentional state reset, invoke `celld dev . --clean` directly; no standard `dev:clean` script is added.
 
-1. loads optional `.env`,
-2. overlays the current process environment,
-3. selects and validates the Worker environment,
-4. writes `.dev.vars`,
-5. runs `celld dev .`.
+## 18. Backend-only HTTP boundary
 
-Celld keeps local durable state under `.celld/dev`.
+This repository exposes REST/JSON endpoints and public WebSocket upgrade endpoints through Hono. It **does not** serve an SPA or SSR assets. Its demonstration chat feature is API-only; use curl, a WebSocket client or the Waku frontend to consume it.
 
-Do not add a normal `dev:clean` abstraction. If a developer intentionally wants empty state, use:
+Waku's frontend can call this Worker as an ordinary public API or through a configured service binding for server-to-server calls. Do not introduce a frontend framework into `celld-hono` by default.
 
-```bash
-celld dev . --clean
-```
+## 19. Asset ownership
 
-## 18. Frontend development
-
-The reference browser-native SPA runs directly from Celld's configured asset directory in local development and production. It does not need a separate frontend server or proxy.
-
-For a framework-based frontend with its own dev server, proxy API and WebSocket requests to local Celld:
-
-```text
-Browser
-   |
-   v
-frontend dev server
-   |
-   +-- frontend
-   |
-   +-- /api/* ------> http://127.0.0.1:9876
-```
-
-This preserves production-like URLs and avoids development-only CORS configuration.
-
-The proxy implementation is frontend-framework-specific. In production, point Celld's asset directory at the framework's build output so the app and API can share one origin.
-
-## 19. Static frontend assets
-
-For the reference SPA, the root Wrangler configuration also declares:
-
-```text
-assets.directory = ./src
-assets.not_found_handling = single-page-application
-assets.run_worker_first = /api/* and /health
-```
-
-Celld's asset layer serves frontend files directly. API and health routes skip asset lookup and run the Worker first. Navigation misses fall back to `index.html`, making the frontend a single-page application.
-
-The reference app is browser-native and therefore needs no production compilation step. Framework-based applications should instead point `assets.directory` at their production build output such as `dist/` or `out/`.
+There is no `assets` block in the default Hono `wrangler.jsonc`. Web application assets belong in the [celld-waku](https://github.com/chof64/celld-waku) build output and are published by its own Worker. If a backend feature specifically needs assets, add that binding intentionally.
 
 ## 20. Production deployment
 
@@ -715,6 +675,7 @@ How Celld binaries are distributed or upgraded is infrastructure-specific and ou
 The boilerplate intentionally keeps commands small:
 
 ```text
+pnpm dev
 pnpm dev:celld
 pnpm typecheck
 pnpm test
@@ -722,7 +683,7 @@ pnpm check
 pnpm deploy
 ```
 
-A mixed frontend repository additionally owns its framework-native `pnpm dev` and `pnpm build`.
+The Waku sibling also provides framework-native `pnpm build` and `pnpm build:celld` for its React application.
 
 Avoid baseline commands such as:
 
@@ -763,9 +724,9 @@ Do not use a Durable Object merely because one is available. Use it when the own
 
 ## 28. What is intentionally not standardized
 
-This boilerplate does not select:
+This backend starter does not select:
 
-- frontend framework,
+- a frontend framework (see the Waku sibling),
 - ORM,
 - PostgreSQL provider,
 - authentication provider,
