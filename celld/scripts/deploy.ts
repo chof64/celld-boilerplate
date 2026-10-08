@@ -7,7 +7,7 @@ import {
   selectWorkerEnvironment,
 } from "./env";
 
-const sourceConfigPath = "wrangler.jsonc";
+const sourceConfigPath = process.env.CELLD_APPLICATION_CONFIG ?? "wrangler.jsonc";
 const deployConfigPath = ".wrangler.deploy.jsonc";
 
 function readWranglerConfig(): Record<string, unknown> {
