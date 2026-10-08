@@ -8,13 +8,13 @@ This document has **identical contents** in [celld-hono](https://github.com/chof
 | --- | --- | --- |
 | `ARCHITECTURE.md` | The 13 numbered **Shared architecture principles** and sibling table must match word-for-word | Hono HTTP/DO implementation vs Waku React/SSR/RSC design |
 | `DEPLOY.md` | Node topology, fleet security, upgrades, drain, CI, environment settings, and deployment instructions must match | App-specific test/checklist appendix |
-| `.github/workflows/deploy.yml` | Same triggers, production Environment, `ENV_FILE`, Celld version, credentials, dry-run, serialized deploy | Package installation may differ until Waku's pnpm lockfile exists |
+| `.github/workflows/deploy.yml` | Same triggers, production Environment, `ENV_FILE`, Celld version, credentials, dry-run, serialized deploy | Waku's install/cache settings differ until its pnpm lockfile exists |
 | `celld/scripts/env.ts` | Same `.env` overlay, allowlist, and `.dev.vars` serialization | None; keep source identical |
-| `celld/scripts/dev.ts` | Same native `celld dev .` launcher | Waku prepares/builds its frontend before invoking it |
-| `celld/scripts/deploy.ts` | Same temporary `.wrangler.deploy.jsonc` and native `celld deploy` wrapper | Waku prepares its client/server build first |
+| `celld/scripts/dev.ts` | Same native `celld dev` launcher with an optional config path | Waku prepares/builds its frontend and passes generated `.wrangler.celld.jsonc` |
+| `celld/scripts/deploy.ts` | Same temporary `.wrangler.deploy.jsonc` and native `celld deploy` wrapper with optional source config | Waku prepares a generated `.wrangler.celld.jsonc` from the canonical file |
 | `celld/env.ts` | Same `workerEnvironment.required/optional` contract | Binding types differ (`ROOM` for Hono, `ASSETS` for Waku) |
 | `.env.example`, `.env.prod.example` | Same application variable shape and examples | Add app-specific keys intentionally |
-| `wrangler.jsonc` | One root configuration, stable binding names, no secrets | Hono exports DOs; Waku declares static assets and generated Worker entry |
+| `wrangler.jsonc` | One root configuration, stable binding names, no secrets | Hono exports DOs; Waku uses its source Worker entry for Vite and generates an ignored Celld config for its bundled entry |
 | Project scripts | `pnpm dev`, `pnpm dev:celld`, `pnpm check`, `pnpm deploy` | Waku also has `pnpm build`, `pnpm build:celld` and `pnpm env:local` |
 | State ownership | Explicit domain persistence, standard HTTP for public APIs, prefer Celld-native bindings | Waku Server Actions are for the web app's UI, not external APIs |
 
@@ -31,4 +31,4 @@ When changing a shared convention:
 
 **Important:** GitHub Actions concurrency is scoped to each repository, not shared across them. Deploys targeting the same Celld fleet must be coordinated by the composition repository or another fleet-wide deployment lock.
 
-The Waku/Celld RSC packaging bridge is still experimental. Matching conventions **do not** imply Waku production compatibility has been demonstrated.
+Waku's generated `.wrangler.celld.jsonc` is a disposable artifact, **not** a second hand-maintained environment configuration. The Waku/Celld RSC packaging bridge is still experimental. Matching conventions **do not** imply Waku production compatibility has been demonstrated.
