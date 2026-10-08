@@ -15,7 +15,8 @@ The goal is a small, opinionated Celld application shape with sensible defaults 
 7. **Use one canonical `wrangler.jsonc`.**
 8. **Use native `celld dev` and `celld deploy`.**
 9. **Keep application environment separate from fleet/infrastructure environment.**
-10. **Add complexity only after a concrete requirement appears.**
+10. **Organize public Hono endpoints in descriptively named files, flat by default.** Related routes may move into optional feature folders as the API grows; keep HTTP methods for the same URL together and explicitly compose routes with Hono.
+11. **Add complexity only after a concrete requirement appears.**
 
 ## 2. Default stack
 
@@ -313,7 +314,13 @@ project/
 │   ├── env.ts                   # explicit Worker env contract
 │   │
 │   ├── http/
-│   │   └── app.ts               # Hono public API
+│   │   ├── app.ts               # Hono route composition
+│   │   └── routes/              # named endpoint files; optional feature folders
+│   │       ├── health.ts
+│   │       ├── rooms.ts
+│   │       ├── room-messages.ts
+│   │       ├── room-socket.ts
+│   │       └── room-params.ts
 │   │
 │   ├── durable-objects/
 │   │   └── room.ts              # example stateful entity
@@ -357,31 +364,42 @@ Business logic should not accumulate in the entrypoint.
 
 ## 10. Feature organization
 
-Prefer feature-oriented organization to framework layers.
-
-Avoid making this the default:
+**One endpoint URL, one descriptively named Hono route file.** All HTTP methods on that URL belong in the same file. Start with flat files under `celld/http/routes/`; if many related files become difficult to navigate, optionally move them into a resource or feature folder. Do not mirror URL segments with directories or create generic `route.ts` files solely to express the URL.
 
 ```text
-controllers/
-services/
-repositories/
-models/
-routes/
+celld/http/
+├── app.ts
+└── routes/
+    ├── health.ts
+    ├── rooms.ts
+    ├── room-messages.ts
+    ├── room-socket.ts
+    └── room-params.ts
 ```
 
-As an application grows, prefer something like:
+A route module exports a chained `new Hono<{ Bindings: Env }>().get("/full/url", ...).post("/full/url", ...)` sub-app. In `celld/http/app.ts`, import and compose every module with chained `.route("/", subApp)` calls. This uses normal Hono routing, **not** automatic filesystem routing, and preserves the optional typed client's `AppType` inference.
+
+Share input schemas in small adjacent files like `room-params.ts`, and keep domain logic independent of HTTP so Hono, Queues, Workflows, and Durable Objects can call it. Do not move transport-specific handlers or business implementations into `app.ts`.
+
+#### Optional organization as the API grows
+
+Grouping related files into a folder is supported without changing routing behavior. For example, when the flat `room-*.ts` files and `rooms.ts` outgrow the top-level route directory:
 
 ```text
-celld/features/
-├── bookings/
-│   ├── routes.ts
-│   ├── schema.ts
-│   └── matching.ts
-├── users/
-└── payments/
+celld/http/routes/
+├── health.ts
+└── room/
+    ├── details.ts      # GET /api/rooms/:roomId
+    ├── messages.ts     # GET/POST /api/rooms/:roomId/messages
+    ├── socket.ts       # GET /api/rooms/:roomId/socket
+    └── params.ts       # shared schema
 ```
 
-Shared business functions should be callable by Hono, Queues, Workflows, and Durable Objects without importing an HTTP framework unless HTTP is actually part of the concern.
+Keep each sub-app's **full public Hono URL** and continue to import/mount each sub-app in `celld/http/app.ts` using chained `.route("/", ...)`. Moving a module only requires updating its import in `app.ts` and any relative imports between route files (such as `./params`). The folder name does not add an HTTP path prefix or automatically register endpoints, and there is no need to add a new route-group layer. Keep the same endpoint tests and run `pnpm check` after reorganizing.
+
+Avoid a default hierarchy of generic `controllers/`, `services/`, `repositories/`, and `models/`. For larger features, group reusable domain code under `celld/features/<feature>/`, independently of whether their HTTP routes remain flat or use an optional folder. Do not create empty feature directories upfront.
+
+See [README.md](./README.md#hono-route-files-default) for the implemented convention and adding a route, and [Hono route grouping](https://hono.dev/docs/api/routing#grouping-without-changing-base).
 
 ## 11. Validation
 
@@ -728,7 +746,7 @@ Use these defaults when adding functionality.
 
 | Need | Default |
 | --- | --- |
-| Public API endpoint | RESTful HTTP through Hono |
+| Public API endpoint | RESTful HTTP through Hono; one named file per URL, flat by default with optional feature folders |
 | HTTP validation | Standard Schema + Zod |
 | Internal method-style call to stateful entity | Durable Object RPC |
 | Durable Object HTTP interface | `fetch()` |
