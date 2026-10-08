@@ -142,6 +142,36 @@ The REST endpoint remains the contract. The Hono client only adds compile-time c
 
 Inside the Worker, Hono routes may then use native Celld bindings/RPC to reach stateful Durable Objects.
 
+## Hono route files (default)
+
+The public API uses a **Next.js App Router-inspired layout**: one `route.ts` file per URL path. HTTP methods for the same URL (such as `GET` and `POST` for messages) live in that file. This is an organization convention, **not** automatic file-based routing; Hono still explicitly composes every route.
+
+```text
+celld/http/
+├── app.ts                                   # top-level Hono composition
+└── routes/
+    ├── health/
+    │   └── route.ts                         # GET /health
+    └── api/
+        └── rooms/
+            ├── index.ts                     # mounts the room endpoints
+            └── [roomId]/
+                ├── params.ts                # shared room parameter schema
+                ├── route.ts                 # GET /api/rooms/:roomId
+                ├── messages/
+                │   └── route.ts             # GET and POST /api/rooms/:roomId/messages
+                └── socket/
+                    └── route.ts             # GET /api/rooms/:roomId/socket (WebSocket)
+```
+
+Each `route.ts` exports a Hono sub-app whose handlers use `"/"` because the parent mounts it at the public URL. A directory named `[roomId]` is a readability convention; the corresponding Hono path uses `:roomId`.
+
+For example, `celld/http/routes/api/rooms/index.ts` registers `roomRoute`, `roomMessagesRoute`, and `roomSocketRoute` using `.route("/:roomId", ...)` and its subpaths. Then `celld/http/app.ts` mounts the rooms group at `/api/rooms`. **Mount sub-apps after defining their routes**, and chain `.get()`, `.post()`, and `.route()` so the exported `AppType` retains Hono client inference.
+
+To add `POST /api/rooms/:roomId/typing`, create `[roomId]/typing/route.ts`, export a sub-app with a `.post("/", ...)` handler, and register it in `rooms/index.ts` with `.route("/:roomId/typing", typingRoute)`. Add an HTTP test in `tests/http.test.ts`. Keep shared validation near the routes that use it, and move reusable business behavior into plain functions rather than accumulating it in `app.ts`.
+
+References: [Hono route grouping](https://hono.dev/docs/api/routing#grouping) and [grouping routes for typed clients](https://hono.dev/examples/grouping-routes-rpc).
+
 ## Environment variables
 
 Application runtime variables belong in `.env`. The committed templates are:
