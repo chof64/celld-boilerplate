@@ -243,6 +243,8 @@ A       B       ...
 
 Do not deploy application code node-by-node.
 
+**One fleet runs one composed Celld application.** These starter workflows are intended for standalone deployments. Give each standalone deployment its own fleet/bucket. To co-host Hono and Waku Workers in one fleet, compose both Worker scripts under a single application deployment and publish it from **one deployment pipeline** (such as the planned `xicar-ph/celld` repository). Disable independent repository deployment workflows targeting that shared fleet; publishing one starter by itself would replace the current application pointer rather than merge it.
+
 Running nodes poll the deployment pointer and adopt the new application in place.
 
 Serialize production deploys so only one writer updates a fleet at a time.
