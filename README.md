@@ -1,43 +1,32 @@
-# Celld Boilerplate
+# Celld + Hono
 
-An opinionated starting point for building applications on [Celld](https://github.com/denoland/celld) with [Hono](https://hono.dev/).
+A **backend-only** starter for [Celld](https://github.com/denoland/celld) built with [Hono](https://hono.dev/). Use it for REST APIs, WebSockets, Durable Objects, Queues, Workflows and other Celld-native backend services. It deliberately does **not** ship a frontend.
 
-The project keeps the public API simple:
+## Sibling starters
 
-- **Celld** is the runtime and provides Workers, Durable Objects, Queues, Workflows, Cron, KV, D1, R2, and other bindings.
-- **Hono** is the public HTTP/WebSocket gateway.
-- **Durable Objects** own stateful entities and long-lived coordination.
-- **RESTful HTTP through Hono** is the default public API for web, mobile, and other clients.
-- **Native Celld RPC** is preferred for internal method-style calls to Durable Objects.
-- **Hono's typed client** is optional convenience for TypeScript consumers; it does not define the public API contract.
-- **Zod + Standard Schema** validate untrusted HTTP input.
-- **Native `celld dev` and `celld deploy`** remain visible rather than being hidden behind a custom framework.
+| Starter | Purpose |
+| --- | --- |
+| **[celld-hono](https://github.com/chof64/celld-hono)** (this repository) | Backend APIs, stateful coordination, Durable Objects and service workers |
+| **[celld-waku](https://github.com/chof64/celld-waku)** | Full-stack React: SSR, RSC, client components, Server Actions and API routes |
 
-For the complete design and the reasoning behind it, read [ARCHITECTURE.md](./ARCHITECTURE.md). For production node setup, application deployment, scaling, and Celld runtime upgrades, read [DEPLOY.md](./DEPLOY.md).
+Both follow the [same shared architecture principles](./ARCHITECTURE.md#1-shared-architecture-principles), [Celld deployment runbook](./DEPLOY.md), env allowlist, `ENV_FILE` secret model and production workflow. They differ only where their framework responsibilities require it.
 
 ## Mental model
 
 ```text
-Web / mobile client
-        |
-        | HTTPS / WebSocket
-        v
-Public Celld Worker
-        |
-        v
-      Hono
-   /           \
-REST         WebSocket upgrade
-  |               |
-  | native RPC    |
-  v               v
-      Durable Objects
-      state + coordination
+Mobile / web / service client
+            |
+      REST / WebSocket
+            v
+        Hono Worker
+          /     \
+    Stateless    Durable Object
+      logic      RPC / WebSocket
+          \     /
+         Celld fleet
 ```
 
-Clients talk to the public Worker. The Worker authenticates, validates, and routes requests. Durable Objects remain an application-internal capability reached through Celld bindings.
-
-For normal stateful operations, Hono translates the public HTTP request into a native Durable Object RPC call. For a WebSocket, Hono handles the initial public route and forwards the upgrade to the selected Durable Object; Celld then carries the socket to the object.
+Hono owns the public HTTP contract. Native Celld bindings and Durable Objects remain behind that boundary. Reusable domain functions can also be called by queues, workflows and scheduled handlers.
 
 ## Requirements
 
@@ -47,61 +36,42 @@ For normal stateful operations, Hono translates the public HTTP request into a n
 
 Production also needs access to the fleet object store through Celld's normal environment/credential configuration.
 
-## Chat demo
+## API-only chat example
 
-The repository includes a small single-page chat application inspired by `chof64/chat-app`. It is intentionally simple so the runtime architecture stays visible.
-
-The demo uses:
+The starter includes a small chat backend for exercising Hono routing, Zod validation, Celld Durable Object RPC, SQLite, and WebSocket upgrades—**without bundling a UI**.
 
 ```text
-Browser
-  |
-  +-- GET /api/rooms/:roomId/messages
-  |      REST -> Hono -> Room.listMessages() RPC -> Durable Object SQLite
-  |
-  +-- POST /api/rooms/:roomId/messages
-  |      REST -> Hono -> Room.sendMessage() RPC -> SQLite + broadcast
-  |
-  +-- GET /api/rooms/:roomId/socket
-         WebSocket -> Hono -> Room.fetch() -> Durable Object
+GET  /api/rooms/:roomId/messages   Hono -> Room.listMessages() RPC
+POST /api/rooms/:roomId/messages   Hono -> Room.sendMessage() RPC
+GET  /api/rooms/:roomId/socket     Hono -> Room.fetch() WebSocket
 ```
-
-The WebSocket is only for realtime delivery. Message creation and history remain ordinary REST endpoints.
 
 ### Run it
 
-```bash
+```sh
 pnpm install
 cp .env.example .env
+pnpm dev
 ```
 
-Start Celld, which serves both the SPA and API from one local origin:
+Celld serves the API at `http://127.0.0.1:9876`:
 
-```bash
-pnpm dev:celld
-```
-
-Open `http://localhost:9876`.
-
-You can also exercise the REST API directly:
-
-```bash
+```sh
+curl http://127.0.0.1:9876/health
 curl http://127.0.0.1:9876/api/rooms/lobby/messages
-```
-
-```bash
 curl -X POST http://127.0.0.1:9876/api/rooms/lobby/messages \
   -H 'content-type: application/json' \
   -d '{"userName":"Ada","text":"Hello from Celld"}'
 ```
 
-In production, Celld serves the same files from `src/` as static assets and sends `/api/*` and `/health` to the Worker first. The SPA and API can therefore live on one origin without production CORS configuration.
+There is no homepage or SPA. For a web frontend, start with [celld-waku](https://github.com/chof64/celld-waku).
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm dev:celld` | Generate local Worker vars and run Celld with the SPA and API |
+| `pnpm dev` | Alias for the backend Celld development runtime |
+| `pnpm dev:celld` | Generate local Worker vars and run native Celld development |
 | `pnpm typecheck` | Type-check the boilerplate |
 | `pnpm test` | Run tests |
 | `pnpm check` | Run type-checking and tests |
@@ -249,20 +219,11 @@ Only variables declared in `celld/env.ts` become Worker bindings. The fleet sett
 
 See [DEPLOY.md](./DEPLOY.md#github-actions) for the full workflow contract and secret setup.
 
-## Using this in a frontend repository
+## Full-stack applications
 
-This boilerplate keeps Celld code under `celld/` and the example frontend under `src/`.
+Use [celld-waku](https://github.com/chof64/celld-waku) for pages, SSR, client components and Server Actions. It follows the same Celld runtime conventions, production `ENV_FILE` contract and infrastructure runbook. Waku API endpoints may access Celld bindings directly; when they need a separate stateful Durable Object implementation, communicate with this Hono Worker through an explicit service binding.
 
-The included SPA uses browser-native modules so the same files can be served directly by Celld in production. A real project can replace `src/` with any frontend framework and point the root Wrangler asset directory at that framework's build output.
-
-In a mixed project with a framework-based frontend:
-
-```text
-pnpm dev          -> frontend framework
-pnpm dev:celld    -> Celld
-```
-
-The included browser-native SPA needs no separate frontend dev server. Celld serves it from `src/` in local development and production. A framework-based frontend can use its own dev server with a proxy for API and WebSocket paths, while its production build can be served by Celld from the configured asset directory.
+The default `wrangler.jsonc` intentionally retains its existing Worker name (`celld-boilerplate`) to avoid silently changing a deployed script or Durable Object identity merely because the repository was renamed. Choose a new Worker name **before a first deployment**, or plan an explicit migration for an existing one.
 
 ## Philosophy
 
