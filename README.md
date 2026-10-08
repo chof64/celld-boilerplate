@@ -13,6 +13,8 @@ Both follow the [same shared architecture principles](./ARCHITECTURE.md#1-shared
 
 Read [SYNC.md](./SYNC.md) when changing a convention that applies to both starters.
 
+Each standalone workflow publishes **one complete Celld application**. To put both Workers in a shared fleet, compose them in a single deployment and use one publisher; running both workflows independently against the same fleet would replace the application, not combine it.
+
 ## Mental model
 
 ```text
