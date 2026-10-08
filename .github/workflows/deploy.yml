@@ -74,17 +74,13 @@ jobs:
           import { parse } from "dotenv";
 
           const env = parse(readFileSync(".env"));
-          const infrastructureVariables = [
-            "CELLD_VERSION",
-            "CELLD_BUCKET",
-            "S3_ENDPOINT",
-            "AWS_REGION",
-            "AWS_DEFAULT_REGION",
-            "AWS_ACCESS_KEY_ID",
-            "AWS_SECRET_ACCESS_KEY",
-            "AWS_SESSION_TOKEN",
-          ];
-          const included = infrastructureVariables.filter((name) => name in env);
+          const included = Object.keys(env).filter(
+            (name) =>
+              name.startsWith("CELLD_") ||
+              name.startsWith("AWS_") ||
+              name === "S3_ENDPOINT" ||
+              name === "GOOGLE_APPLICATION_CREDENTIALS",
+          );
 
           if (included.length > 0) {
             console.error(
