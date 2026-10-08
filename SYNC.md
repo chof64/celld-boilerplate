@@ -29,6 +29,6 @@ When changing a shared convention:
 5. Run `pnpm check` in each repository, then build and test on an actual Celld runtime for runtime-related changes.
 6. Never rename persistent Worker/binding identities casually when syncing repository names.
 
-**Important:** GitHub Actions concurrency is scoped to each repository, not shared across them. Deploys targeting the same Celld fleet must be coordinated by the composition repository or another fleet-wide deployment lock.
+**Important:** GitHub Actions concurrency is scoped to each repository, not shared across them. One Celld fleet runs one composed application. Standalone starter deployments need separate fleets/buckets; a shared Xicar fleet must receive **one combined application deployment** from the composition repository, not independent Hono and Waku publishes. Deploys targeting the same fleet also need a fleet-wide deployment lock.
 
 Waku's generated `.wrangler.celld.jsonc` is a disposable artifact, **not** a second hand-maintained environment configuration. The Waku/Celld RSC packaging bridge is still experimental. Matching conventions **do not** imply Waku production compatibility has been demonstrated.
