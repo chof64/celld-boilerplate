@@ -1,6 +1,6 @@
 # Deploy Celld
 
-This is the production runbook for this boilerplate.
+This is the shared Celld production runbook for both [celld-hono](https://github.com/chof64/celld-hono) (backend-only) and [celld-waku](https://github.com/chof64/celld-waku) (full-stack React). Keep the fleet, upgrade, secrets and CI sections aligned in both repositories.
 
 It covers:
 
@@ -253,7 +253,7 @@ Reference: [Deploy an application](https://github.com/denoland/celld/blob/main/d
 
 The boilerplate includes `.github/workflows/deploy.yml`.
 
-It deploys on pushes to `main` and can also be started manually from `main` with `workflow_dispatch`. Production runs are serialized with GitHub Actions concurrency so two deploys cannot update the same fleet at the same time. Restrict the `production` GitHub Environment to deployments from `main` as well.
+It deploys on pushes to `main` and can also be started manually from `main` with `workflow_dispatch`. Production runs are serialized **within each GitHub repository** using Actions concurrency. GitHub's concurrency groups do not coordinate across repositories. If both starters target the same fleet, use a single composition/deployment pipeline or another fleet-wide deploy lock; never assume these two workflows serialize each other. Restrict the `production` GitHub Environment to deployments from `main` as well.
 
 In the `production` GitHub Environment, configure these variables:
 
@@ -295,7 +295,7 @@ CELLD_BUCKET + S3 settings + AWS credential secrets ---------------------+
 
 The deploy wrapper merges `.env` with the process environment and passes the result to Celld. Only variables explicitly declared in `celld/env.ts` are copied into Worker bindings. The bucket credentials are available to the deploy CLI and are not written into `.env` or exposed as Worker bindings.
 
-The workflow runs dependency installation and checks before it reads `ENV_FILE`. It then rejects Celld and S3 settings in the file, writes `.env` with restrictive file permissions, and never intentionally prints its contents. The file is already ignored by Git. The S3 credentials are scoped to the deployment steps rather than dependency installation and checks.
+The workflow runs dependency installation and checks before it reads `ENV_FILE`. It then rejects Celld, AWS and S3 infrastructure settings in the file, writes `.env` with restrictive file permissions, and never intentionally prints its contents. The file is already ignored by Git. The S3 credentials are scoped to the deployment steps rather than dependency installation and checks.
 
 To configure the secret with GitHub CLI from a local production env file:
 
@@ -623,3 +623,14 @@ Reference: [Diagnose a fleet](https://github.com/denoland/celld/blob/main/docs/R
 - [Guarantees](https://github.com/denoland/celld/blob/main/docs/guarantees.md)
 - [Telemetry](https://github.com/denoland/celld/blob/main/docs/telemetry.md)
 - [Testing and performance notes](https://github.com/denoland/celld/blob/main/docs/testing.md)
+
+---
+
+# Starter-specific verification: Hono backend
+
+- Confirm `GET /health` returns JSON and the Worker does **not** serve a default frontend or SPA fallback.
+- Confirm the chat REST endpoints validate inputs and reach the `Room` Durable Object through native RPC.
+- Confirm a WebSocket upgrade reaches the `Room` Durable Object and reconnects cleanly after node restarts.
+- Keep the deployed Worker name and `Room` migration identities stable; renaming the GitHub repository is not a Worker migration.
+
+For frontend rendering and Waku's additional runtime checks, use [celld-waku](https://github.com/chof64/celld-waku/blob/main/DEPLOY.md).
