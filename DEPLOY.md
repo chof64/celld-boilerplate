@@ -1,6 +1,6 @@
 # Deploy Celld
 
-This is the shared Celld production runbook for both [celld-hono](https://github.com/chof64/celld-hono) (backend-only) and [celld-waku](https://github.com/chof64/celld-waku) (full-stack React). Keep the fleet, upgrade, secrets and CI sections aligned in both repositories.
+This is the shared Celld production runbook for both [celld-hono](https://github.com/chof64/celld-hono) (API-first, optional React SPA) and [celld-waku](https://github.com/chof64/celld-waku) (full-stack React). Keep the fleet, upgrade, secrets and CI sections aligned in both repositories.
 
 It covers:
 
