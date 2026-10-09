@@ -6,36 +6,38 @@ import { describe, expect, it } from "vitest";
 
 import { createWebConfig, hasWebApplication } from "../scripts/web-config";
 
-describe("optional frontend", () => {
-  it("deploys API-only without a web entry, and detects a complete one", () => {
+describe("optional static Waku frontend", () => {
+  it("detects Waku pages and remains API-only without them", () => {
     const root = mkdtempSync(join(tmpdir(), "celld-hono-"));
     try {
       expect(hasWebApplication(root)).toBe(false);
-      writeFileSync(join(root, "index.html"), "<html></html>");
-      expect(() => hasWebApplication(root)).toThrow("requires both");
-      mkdirSync(join(root, "src"));
-      writeFileSync(join(root, "src/main.tsx"), "export {}");
+      mkdirSync(join(root, "src/pages"), { recursive: true });
+      writeFileSync(join(root, "src/pages/index.tsx"), "export default () => null;");
+      expect(() => hasWebApplication(root)).toThrow("Static Waku requires");
+      writeFileSync(join(root, "src/waku.server.tsx"), "export {};");
+      expect(() => hasWebApplication(root)).toThrow("waku.config.ts");
+      writeFileSync(join(root, "waku.config.ts"), "export default {};");
       expect(hasWebApplication(root)).toBe(true);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("publishes compiled assets while preserving the Worker and DO identities", () => {
+  it("preserves the Hono Worker and serves generated Waku assets without SPA fallback", () => {
     const config = parse(readFileSync("wrangler.jsonc", "utf8"));
-    const withWeb = createWebConfig(config);
+    const combined = createWebConfig(config);
 
     expect(config.assets).toBeUndefined();
-    expect(withWeb.main).toBe("./src/api/index.ts");
-    expect(withWeb.name).toBe(config.name);
-    expect(withWeb.durable_objects).toEqual(config.durable_objects);
-    expect(withWeb.migrations).toEqual(config.migrations);
-    expect(withWeb.assets).toEqual({
-      directory: "./dist",
-      not_found_handling: "single-page-application",
+    expect(combined.main).toBe("./src/api/index.ts");
+    expect(combined.name).toBe(config.name);
+    expect(combined.durable_objects).toEqual(config.durable_objects);
+    expect(combined.migrations).toEqual(config.migrations);
+    expect(combined.assets).toEqual({
+      directory: "./dist/public",
+      html_handling: "drop-trailing-slash",
       run_worker_first: ["/api/*", "/health"],
     });
     expect(() => createWebConfig({ ...config, assets: { directory: "./src" } }))
-      .toThrow("only compiled dist/");
+      .toThrow("only compiled Waku dist/public");
   });
 });
