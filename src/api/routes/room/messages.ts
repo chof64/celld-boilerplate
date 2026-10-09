@@ -2,7 +2,7 @@ import { sValidator } from "@hono/standard-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 
-import type { Env } from "../../../../celld/env";
+import type { Env } from "../../env";
 import { roomParams } from "./params";
 
 const messageBody = z.object({
