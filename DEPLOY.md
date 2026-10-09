@@ -295,7 +295,7 @@ CELLD_VERSION -> install pinned Celld -> pnpm check -> ENV_FILE -> .env --+
 CELLD_BUCKET + S3 settings + AWS credential secrets ---------------------+
 ```
 
-The deploy wrapper merges `.env` with the process environment and passes the result to Celld. Only variables explicitly declared in `src/api/env.ts` are copied into Worker bindings. The bucket credentials are available to the deploy CLI and are not written into `.env` or exposed as Worker bindings.
+The deploy wrapper merges `.env` with the process environment and passes the result to Celld. Only variables explicitly allowed by the project's source-local Worker environment declaration are copied into Worker bindings. The bucket credentials are available to the deploy CLI and are not written into `.env` or exposed as Worker bindings.
 
 The workflow runs dependency installation and checks before it reads `ENV_FILE`. It then rejects Celld, AWS and S3 infrastructure settings in the file, writes `.env` with restrictive file permissions, and never intentionally prints its contents. The file is already ignored by Git. The S3 credentials are scoped to the deployment steps rather than dependency installation and checks.
 
