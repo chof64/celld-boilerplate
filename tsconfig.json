@@ -5,10 +5,21 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
-    "types": ["@cloudflare/workers-types", "node"],
-    "lib": ["ES2023", "WebWorker"],
+    "types": [
+      "@cloudflare/workers-types",
+      "node"
+    ],
+    "lib": [
+      "ES2023",
+      "WebWorker"
+    ],
     "skipLibCheck": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["celld/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "src/api/**/*.ts",
+    "src/lib/**/*.ts",
+    "celld/**/*.ts",
+    "tests/**/*.ts"
+  ]
 }
