@@ -1,15 +1,48 @@
-import { readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { parse } from "jsonc-parser";
 import { describe, expect, it } from "vitest";
 
-import { createWebConfig } from "../celld/scripts/web-config";
+import { createWebConfig, hasWebApplication } from "../celld/scripts/web-config";
 
 const wrangler = parse(
   readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8"),
 );
 
-describe("optional React SPA packaging", () => {
-  it("preserves Worker identity, Durable Objects and migrations", () => {
+describe("automatic Hono application deployment", () => {
+  it("detects a web project when web/package.json exists", () => {
+    expect(hasWebApplication()).toBe(true);
+  });
+
+  it("runs API-only when the optional web directory is missing", () => {
+    const root = mkdtempSync(join(tmpdir(), "celld-hono-api-"));
+    try {
+      expect(hasWebApplication(root)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses incomplete web directories instead of silently dropping the SPA", () => {
+    const root = mkdtempSync(join(tmpdir(), "celld-hono-incomplete-"));
+    try {
+      mkdirSync(join(root, "web"));
+      expect(() => hasWebApplication(root)).toThrow("missing web/package.json");
+      writeFileSync(join(root, "web", "package.json"), "{}");
+      expect(hasWebApplication(root)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves Worker identity, Durable Objects and migrations when a web app exists", () => {
     const deployed = createWebConfig(wrangler);
     expect(deployed.name).toBe(wrangler.name);
     expect(deployed.main).toBe("./celld/index.ts");
@@ -31,19 +64,34 @@ describe("optional React SPA packaging", () => {
       .toThrow("must stay API-only");
   });
 
-  it("keeps independent web dependencies outside the backend package", () => {
+  it("keeps frontend dependencies optional and deployment selection automatic", () => {
     const backend = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     );
-    const frontend = JSON.parse(
-      readFileSync(new URL("../web/package.json", import.meta.url), "utf8"),
+    const frontend = hasWebApplication()
+      ? JSON.parse(readFileSync(new URL("../web/package.json", import.meta.url), "utf8"))
+      : null;
+    const deploy = readFileSync(
+      new URL("../celld/scripts/deploy-app.ts", import.meta.url),
+      "utf8",
+    );
+    const workflow = readFileSync(
+      new URL("../.github/workflows/deploy.yml", import.meta.url),
+      "utf8",
     );
 
     expect(backend.dependencies.react).toBeUndefined();
     expect(backend.dependencies.vite).toBeUndefined();
-    expect(frontend.dependencies.react).toBeTruthy();
-    expect(frontend.devDependencies.vite).toBeTruthy();
-    expect(backend.scripts.deploy).toContain("celld/scripts/deploy.ts");
-    expect(backend.scripts["deploy:web"]).toContain("celld/scripts/deploy-web.ts");
+    if (frontend) {
+      expect(frontend.dependencies.react).toBeTruthy();
+      expect(frontend.devDependencies.vite).toBeTruthy();
+    }
+    expect(backend.scripts.deploy).toContain("celld/scripts/deploy-app.ts");
+    expect(backend.scripts["deploy:web"]).toBeUndefined();
+    expect(deploy).toContain("hasWebApplication()");
+    expect(deploy).toContain("celld/scripts/deploy.ts");
+    expect(workflow).not.toContain("DEPLOY_WEB");
+    expect(workflow).toContain("if [[ -d web ]]");
+    expect(workflow).toContain("pnpm deploy -- --dry-run");
   });
 });
