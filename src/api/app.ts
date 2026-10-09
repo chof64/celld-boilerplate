@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 
-import type { Env } from "../../celld/env";
+import type { Env } from "./env";
 import { healthRoute } from "./routes/health";
 import { roomMessagesRoute } from "./routes/room/messages";
 import { roomSocketRoute } from "./routes/room/socket";
