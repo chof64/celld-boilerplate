@@ -628,19 +628,17 @@ Reference: [Diagnose a fleet](https://github.com/denoland/celld/blob/main/docs/R
 
 ---
 
-# Starter-specific verification: colocated Hono API and optional React
+# Starter-specific verification: static Waku + Hono
 
-The root `wrangler.jsonc` points to `./src/api/index.ts`. It remains asset-free so Hono runs without a frontend. A root `index.html` plus `src/main.tsx` selects the browser app automatically.
+The one production Worker remains `./src/api/index.ts` with the original Durable Object bindings and migrations.
 
-- With no browser entrypoints, `pnpm dev`, `pnpm check` and `pnpm deploy -- --dry-run` should execute only the Hono backend/DO flow.
-- With the browser entrypoints present, `pnpm dev` launches Celld and Vite, and `pnpm check` runs TypeScript, tests and a Vite build. The same `pnpm deploy` builds and publishes the SPA.
-- Missing `index.html`, `src/main.tsx`, or Vite configuration when part of a browser app remains must cause an explicit error.
-- The derived `.wrangler.web.jsonc` must serve **only `./dist`**, not `./src`; Hono's privileged modules live under `src/api/`.
-- Verify `GET /health` and `GET /api/rooms/lobby/messages` return JSON rather than SPA fallback HTML.
-- Verify `GET /rooms/drivers` refreshes correctly when an SPA exists and its JS/CSS assets are served from `dist/`.
-- Open two browser windows and verify REST writes, Durable Object broadcasts and reconnect history resynchronization.
-- Preserve Worker name, Durable Object bindings and migrations across API-only and API+SPA deployments.
+- `pnpm dev` runs Celld on port 9876 and Waku on port 3000 when `src/waku.server.tsx` and `src/pages/index.tsx` exist. `pnpm dev:celld` runs the API alone.
+- Waku's `waku build` must emit `dist/public/index.html`, each `staticPaths` route under `dist/public/rooms/*/index.html`, RSC payloads under `dist/public/RSC/`, and browser assets.
+- The generated `.wrangler.web.jsonc` must reference `./dist/public` with `html_handling: "drop-trailing-slash"` and Worker-first routes for `/api/*` and `/health`. **No SPA fallback** and no source directory assets.
+- Verify Celld serves `/`, `/rooms/drivers`, and `/rooms/dispatch`, including CSS/JS and Waku's RSC files.
+- Verify Hono REST responses under `/api/*` stay JSON; opening two chat windows should demonstrate Durable Object WebSocket broadcasts.
+- Verify reconnect after a backend restart, with a history refresh to recover missed messages.
+- With Waku's source entry and pages removed, the same `pnpm dev`, `pnpm check`, and `pnpm deploy` should behave as API-only.
+- A Waku page requiring request-time rendering, Server Actions or dynamic API routes **cannot** work from this static-only build. Keep dynamic operations in Hono until a server-capable Waku runtime is deliberately introduced and tested.
 
-Production GitHub Actions runs one `pnpm install`, one `pnpm check`, and the same `pnpm deploy` invocation for both repository layouts. There is no frontend deployment flag or duplicate `web/` package. The root dependency lockfile includes Hono and React/Vite so CI uses `--frozen-lockfile`.
-
-For development and source boundaries, see [README.md](./README.md) and [ARCHITECTURE.md](./ARCHITECTURE.md). To host Hono and Waku in one fleet, compose both Workers into one application and use one publisher.
+Production GitHub Actions uses the same frozen root pnpm install, `ENV_FILE` secret contract, dry-run and `pnpm deploy` pipeline regardless of whether Waku pages exist. A fleet deploy replaces the entire current application, including any old static assets. See [README.md](./README.md) and [ARCHITECTURE.md](./ARCHITECTURE.md) for source boundaries.
