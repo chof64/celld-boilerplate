@@ -1,273 +1,79 @@
-# Celld Boilerplate
+# Celld + Hono + Waku
 
-An opinionated starting point for building applications on [Celld](https://github.com/denoland/celld) with [Hono](https://hono.dev/).
+An **API-first Celld starter** with Hono for REST/WebSockets/Durable Objects and **optional static Waku** for React pages. The browser, mobile apps and integrations all use the same Hono endpoints.
 
-The project keeps the public API simple:
+Waku lives at the project root, uses `src/pages/` for file-based routing, and **pre-renders every web page at build time**. No Waku server is deployed: Hono remains the only production Worker.
 
-- **Celld** is the runtime and provides Workers, Durable Objects, Queues, Workflows, Cron, KV, D1, R2, and other bindings.
-- **Hono** is the public HTTP/WebSocket gateway.
-- **Durable Objects** own stateful entities and long-lived coordination.
-- **RESTful HTTP through Hono** is the default public API for web, mobile, and other clients.
-- **Native Celld RPC** is preferred for internal method-style calls to Durable Objects.
-- **Hono's typed client** is optional convenience for TypeScript consumers; it does not define the public API contract.
-- **Zod + Standard Schema** validate untrusted HTTP input.
-- **Native `celld dev` and `celld deploy`** remain visible rather than being hidden behind a custom framework.
-
-For the complete design and the reasoning behind it, read [ARCHITECTURE.md](./ARCHITECTURE.md). For production node setup, application deployment, scaling, and Celld runtime upgrades, read [DEPLOY.md](./DEPLOY.md).
-
-## Mental model
+## Layout
 
 ```text
-Web / mobile client
-        |
-        | HTTPS / WebSocket
-        v
-Public Celld Worker
-        |
-        v
-      Hono
-   /           \
-REST         WebSocket upgrade
-  |               |
-  | native RPC    |
-  v               v
-      Durable Objects
-      state + coordination
+src/
+  api/
+    index.ts                  Celld Worker and DO exports
+    app.ts                    Explicit Hono route registration
+    routes/
+      health.ts
+      room/                   Related Hono routes
+    durable-objects/
+    env.ts                    Worker bindings
+  pages/
+    _layout.tsx               Static Waku layout
+    index.tsx                 Static homepage
+    rooms/[roomId].tsx        Static paths for demo rooms
+  components/chat-app.tsx     Interactive React client
+  lib/                        Shared pure modules
+  waku.server.tsx             Waku static build entry
+  styles.css
+scripts/                      Dev, build and deploy helpers
+waku.config.ts                Waku/Vite development configuration
+wrangler.jsonc                Canonical Hono Worker config
+package.json
 ```
 
-Clients talk to the public Worker. The Worker authenticates, validates, and routes requests. Durable Objects remain an application-internal capability reached through Celld bindings.
+**Boundaries:** `src/api/` is server-only. `src/lib/` must remain environment-neutral. `src/pages/` belongs to Waku; `src/api/routes/` belongs to Hono. Waku page URLs follow the file structure; Hono URLs are declared and registered explicitly in `src/api/app.ts`.
 
-For normal stateful operations, Hono translates the public HTTP request into a native Durable Object RPC call. For a WebSocket, Hono handles the initial public route and forwards the upgrade to the selected Durable Object; Celld then carries the socket to the object.
+## Development
 
-## Requirements
+Requires Node.js 22.15+, pnpm, and the Celld CLI.
 
-- Node.js 22+
-- pnpm
-- a current `celld` CLI on `PATH`
-
-Production also needs access to the fleet object store through Celld's normal environment/credential configuration.
-
-## Chat demo
-
-The repository includes a small single-page chat application inspired by `chof64/chat-app`. It is intentionally simple so the runtime architecture stays visible.
-
-The demo uses:
-
-```text
-Browser
-  |
-  +-- GET /api/rooms/:roomId/messages
-  |      REST -> Hono -> Room.listMessages() RPC -> Durable Object SQLite
-  |
-  +-- POST /api/rooms/:roomId/messages
-  |      REST -> Hono -> Room.sendMessage() RPC -> SQLite + broadcast
-  |
-  +-- GET /api/rooms/:roomId/socket
-         WebSocket -> Hono -> Room.fetch() -> Durable Object
-```
-
-The WebSocket is only for realtime delivery. Message creation and history remain ordinary REST endpoints.
-
-### Run it
-
-```bash
-pnpm install
+```sh
+pnpm install --frozen-lockfile
 cp .env.example .env
-```
-
-Start Celld, which serves both the SPA and API from one local origin:
-
-```bash
 pnpm dev:celld
+pnpm dev
 ```
 
-Open `http://localhost:9876`.
+Run the two dev servers in separate terminals:
 
-You can also exercise the REST API directly:
+- **http://127.0.0.1:3000** — Waku frontend with hot reload
+- **http://127.0.0.1:9876** — Celld/Hono REST and WebSocket backend
 
-```bash
-curl http://127.0.0.1:9876/api/rooms/lobby/messages
-```
+Waku's development server proxies `/api/*` and `/health` to Hono, including WebSocket upgrades.
 
-```bash
-curl -X POST http://127.0.0.1:9876/api/rooms/lobby/messages \
-  -H 'content-type: application/json' \
-  -d '{"userName":"Ada","text":"Hello from Celld"}'
-```
+For a backend-only derivative, remove `src/waku.server.tsx` and `src/pages/`, leaving `src/api/` in place, and prune the web scripts and frontend dependencies. No deployment flag is needed.
 
-In production, Celld serves the same files from `src/` as static assets and sends `/api/*` and `/health` to the Worker first. The SPA and API can therefore live on one origin without production CORS configuration.
+## Build and deploy
 
-## Commands
-
-| Command | Purpose |
-| --- | --- |
-| `pnpm dev:celld` | Generate local Worker vars and run Celld with the SPA and API |
-| `pnpm typecheck` | Type-check the boilerplate |
-| `pnpm test` | Run tests |
-| `pnpm check` | Run type-checking and tests |
-| `pnpm deploy` | Prepare runtime vars and run native `celld deploy` |
-
-To intentionally reset local Celld state, use Celld directly:
-
-```bash
-celld dev . --clean
-```
-
-## Public API: REST first
-
-The default client contract is an ordinary RESTful HTTP API:
-
-```text
-GET  /api/rooms/:roomId
-GET  /api/rooms/:roomId/messages
-POST /api/rooms/:roomId/messages
-```
-
-Web, native mobile, third-party clients, scripts, and services can call these endpoints with any standard HTTP client. A client does not need Hono-specific packages.
-
-For TypeScript projects, Hono's typed client may be used as an optional convenience over those same REST routes:
-
-```ts
-import { hc } from "hono/client";
-import type { AppType } from "./celld/http/app";
-
-const api = hc<AppType>("https://api.example.com");
-
-const response = await api.api.rooms[":roomId"].$get({
-  param: { roomId: "demo" },
-});
-```
-
-The REST endpoint remains the contract. The Hono client only adds compile-time convenience for TypeScript consumers and should not drive the API design.
-
-Inside the Worker, Hono routes may then use native Celld bindings/RPC to reach stateful Durable Objects.
-
-## Hono route files (default)
-
-The public API uses **one descriptively named TypeScript file per endpoint URL**, flat under `celld/http/routes/` by default. HTTP methods for the same URL live together. **Related route files may be grouped into subfolders** once the flat directory becomes hard to navigate. Unlike Next.js App Router, neither directories nor filenames determine URL paths.
-
-```text
-celld/http/
-├── app.ts                   # Hono composition
-└── routes/
-    ├── health.ts            # GET /health
-    ├── rooms.ts             # GET /api/rooms/:roomId
-    ├── room-messages.ts     # GET/POST /api/rooms/:roomId/messages
-    ├── room-socket.ts       # GET /api/rooms/:roomId/socket (WebSocket)
-    └── room-params.ts       # shared path-parameter schema
-```
-
-Each endpoint file exports a small Hono sub-app that declares its **full public URL**. A parameter like `:roomId` is expressed in the Hono route path, not by creating a `[roomId]` directory. `room-messages.ts` contains both `GET` and `POST` because both methods use the same URL.
-
-`celld/http/app.ts` imports the sub-apps and explicitly composes them with chained `.route("/", subApp)` calls. No auto-discovery or extra router is introduced; chaining preserves `AppType` inference for Hono's optional typed client.
-
-To add `POST /api/rooms/:roomId/typing`, add `celld/http/routes/room-typing.ts` exporting a Hono sub-app with `.post("/api/rooms/:roomId/typing", ...)`, import it into `app.ts`, and add `.route("/", roomTypingRoute)`. Test the public endpoint in `tests/http.test.ts`. Keep shared HTTP validation in named schema files as needed and domain logic in reusable plain functions.
-
-### Optional folders for related endpoints
-
-When several related files make `routes/` unwieldy, group them by feature or resource **for source-code organization only**. For example, the flat `rooms.ts` and `room-*.ts` files could become:
-
-```text
-celld/http/
-├── app.ts
-└── routes/
-    ├── health.ts
-    └── room/
-        ├── details.ts    # GET /api/rooms/:roomId (formerly rooms.ts)
-        ├── messages.ts   # GET/POST /api/rooms/:roomId/messages
-        ├── socket.ts     # GET /api/rooms/:roomId/socket
-        └── params.ts     # shared validation
-```
-
-`app.ts` still imports and mounts **each endpoint module** directly. Only the import paths change:
-
-```ts
-import { roomRoute } from "./routes/room/details";
-import { roomMessagesRoute } from "./routes/room/messages";
-import { roomSocketRoute } from "./routes/room/socket";
-```
-
-Also adjust any relative schema imports (for example, `"./params"`). Keep the full public URLs declared in each route module and the chained `.route("/", ...)` composition in `app.ts` unchanged. **A `room/` folder does not create an `/room` URL prefix or auto-register routes.** Existing API URLs, Celld bindings, and tests should continue to behave the same; run `pnpm check` after the move. Do not add folders until grouping improves discoverability.
-
-See [Hono's route grouping documentation](https://hono.dev/docs/api/routing#grouping-without-changing-base) and [typed-client route grouping](https://hono.dev/examples/grouping-routes-rpc).
-
-## Environment variables
-
-Application runtime variables belong in `.env`. The committed templates are:
-
-- `.env.example` for development
-- `.env.prod.example` for the production contract
-
-The process environment overrides `.env`.
-
-Only variables declared in `celld/env.ts` are exposed to the Worker. This prevents unrelated host, CI, or fleet credentials from accidentally becoming Worker variables.
-
-Celld infrastructure variables such as `CELLD_BUCKET`, `S3_ENDPOINT`, cloud credentials, node addresses, and fleet tuning do **not** belong in the application env templates. They are supplied by the deployment/runtime environment directly to Celld.
-
-## Production
-
-```bash
+```sh
+pnpm check
+pnpm deploy -- --dry-run
 pnpm deploy
 ```
 
-The deployment wrapper:
+If Waku pages exist, `pnpm deploy` runs `waku build` and adds the generated `dist/public` assets to the **same Celld application** as the Hono Worker. Without Waku pages, it deploys only Hono.
 
-1. resolves the application environment,
-2. validates the Worker environment contract,
-3. creates a temporary root `.wrangler.deploy.jsonc`,
-4. injects only allowed Worker variables,
-5. invokes native `celld deploy --config .wrangler.deploy.jsonc`,
-6. removes the temporary file when finished.
+Static output includes prerendered HTML, client bundles **and Waku RSC payloads**. Celld serves these files as emitted. We deliberately **do not use SPA fallback**, and only compiled `dist/public` is published, never `src/api/` or other source code.
 
-Fleet configuration and object-store credentials are inherited by the Celld process. The project does not assume a CI system, secrets manager, cloud, or hosting platform.
+Static pages run server-side during the **build**, not per request. Dynamic route parameters need `staticPaths`, as demonstrated by the room pages. Browser interactions and dynamic data use normal Hono REST/WebSocket endpoints. Request-time Waku SSR, Server Actions and Waku API handlers are **not** part of this static-only deployment.
 
-You can pass native Celld deploy flags through the wrapper:
+## Example
 
-```bash
-pnpm deploy -- --dry-run
+The chat has three static pages (`/`, `/rooms/drivers`, and `/rooms/dispatch`), while its room messages are live:
+
+```sh
+curl http://127.0.0.1:9876/api/rooms/lobby/messages
 ```
 
-### GitHub Actions
+The Hono Room Durable Object handles SQLite-backed example history and WebSocket broadcasts. This is an **unauthenticated demo**, not production messaging.
 
-A production deployment workflow is included at `.github/workflows/deploy.yml`. It runs on pushes to `main` and supports manual dispatch from `main`. Configure these values in the `production` GitHub Environment:
-
-- Variables: `CELLD_VERSION`, `CELLD_BUCKET`, `AWS_REGION`, and `S3_ENDPOINT` when using S3-compatible storage (omit the endpoint for AWS S3).
-- Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`.
-- Secret `ENV_FILE`: application runtime variables only.
-
-Set `CELLD_VERSION` to the exact release tag used by the running Celld fleet, such as `v0.1.0`. The workflow requires it and installs that release. Keep it aligned when upgrading the fleet.
-
-The `ENV_FILE` secret contains only application runtime values, for example:
-
-```dotenv
-GREETING=Hello from production
-```
-
-The workflow installs the pinned Celld release and runs `pnpm check` before materializing `ENV_FILE` as `.env`. It rejects fleet settings inside `ENV_FILE`, then passes the bucket settings and credentials directly to the dry-run and deploy processes. Deploys are serialized with workflow concurrency.
-
-Only variables declared in `celld/env.ts` become Worker bindings. The fleet settings and credentials remain deploy-process environment variables and are not copied into the Worker.
-
-See [DEPLOY.md](./DEPLOY.md#github-actions) for the full workflow contract and secret setup.
-
-## Using this in a frontend repository
-
-This boilerplate keeps Celld code under `celld/` and the example frontend under `src/`.
-
-The included SPA uses browser-native modules so the same files can be served directly by Celld in production. A real project can replace `src/` with any frontend framework and point the root Wrangler asset directory at that framework's build output.
-
-In a mixed project with a framework-based frontend:
-
-```text
-pnpm dev          -> frontend framework
-pnpm dev:celld    -> Celld
-```
-
-The included browser-native SPA needs no separate frontend dev server. Celld serves it from `src/` in local development and production. A framework-based frontend can use its own dev server with a proxy for API and WebSocket paths, while its production build can be served by Celld from the configured asset directory.
-
-## Philosophy
-
-This repository is intentionally not a framework on top of Celld.
-
-It establishes a few conventions, then gets out of the way:
-
-> Use Celld primitives directly. Use RESTful HTTP through Hono for the public API. Prefer native RPC for internal stateful calls. Keep business logic independent of transport. Keep deployment native. Add complexity only when a concrete requirement appears.
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for project conventions and [DEPLOY.md](./DEPLOY.md) for production fleet setup, secrets, upgrades and draining.

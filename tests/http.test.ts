@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { Env } from "../celld/env";
-import { app } from "../celld/http/app";
+import type { Env } from "../src/api/env";
+import { app } from "../src/api/app";
 
 describe("HTTP API", () => {
   it("serves health through Hono", async () => {

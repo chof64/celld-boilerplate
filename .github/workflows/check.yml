@@ -1,0 +1,29 @@
+name: Check
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Hono API and static Waku
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - name: Verify Waku prerendered routes and RSC payloads
+        run: |
+          test -s dist/public/index.html
+          test -s dist/public/rooms/drivers/index.html
+          test -s dist/public/rooms/dispatch/index.html

@@ -14,10 +14,14 @@ writeFileSync(".dev.vars", serializeDevVars(environment), {
   mode: 0o600,
 });
 
-const child = spawn("celld", ["dev", "."], {
-  stdio: "inherit",
-  env: process.env,
-});
+const child = spawn(
+  "celld",
+  ["dev", ".", "--watch-ignore", "src/pages.gen.ts"],
+  {
+    stdio: "inherit",
+    env: process.env,
+  },
+);
 
 child.on("error", (error) => {
   console.error(error.message);

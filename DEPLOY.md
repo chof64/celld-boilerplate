@@ -1,6 +1,6 @@
 # Deploy Celld
 
-This is the production runbook for this boilerplate.
+This is the production runbook for this Celld application.
 
 It covers:
 
@@ -243,6 +243,8 @@ A       B       ...
 
 Do not deploy application code node-by-node.
 
+**One fleet runs one composed Celld application.** Give each standalone deployment its own fleet/bucket. Publishing to a fleet replaces its current application pointer; it does not merge with whatever ran before.
+
 Running nodes poll the deployment pointer and adopt the new application in place.
 
 Serialize production deploys so only one writer updates a fleet at a time.
@@ -253,7 +255,7 @@ Reference: [Deploy an application](https://github.com/denoland/celld/blob/main/d
 
 The boilerplate includes `.github/workflows/deploy.yml`.
 
-It deploys on pushes to `main` and can also be started manually from `main` with `workflow_dispatch`. Production runs are serialized with GitHub Actions concurrency so two deploys cannot update the same fleet at the same time. Restrict the `production` GitHub Environment to deployments from `main` as well.
+It deploys on pushes to `main` and can also be started manually from `main` with `workflow_dispatch`. Production runs are serialized using Actions concurrency. Restrict the `production` GitHub Environment to deployments from `main` as well.
 
 In the `production` GitHub Environment, configure these variables:
 
@@ -293,9 +295,9 @@ CELLD_VERSION -> install pinned Celld -> pnpm check -> ENV_FILE -> .env --+
 CELLD_BUCKET + S3 settings + AWS credential secrets ---------------------+
 ```
 
-The deploy wrapper merges `.env` with the process environment and passes the result to Celld. Only variables explicitly declared in `celld/env.ts` are copied into Worker bindings. The bucket credentials are available to the deploy CLI and are not written into `.env` or exposed as Worker bindings.
+The deploy wrapper merges `.env` with the process environment and passes the result to Celld. Only variables explicitly allowed by the project's source-local Worker environment declaration are copied into Worker bindings. The bucket credentials are available to the deploy CLI and are not written into `.env` or exposed as Worker bindings.
 
-The workflow runs dependency installation and checks before it reads `ENV_FILE`. It then rejects Celld and S3 settings in the file, writes `.env` with restrictive file permissions, and never intentionally prints its contents. The file is already ignored by Git. The S3 credentials are scoped to the deployment steps rather than dependency installation and checks.
+The workflow runs dependency installation and checks before it reads `ENV_FILE`. It then rejects Celld, AWS and S3 infrastructure settings in the file, writes `.env` with restrictive file permissions, and never intentionally prints its contents. The file is already ignored by Git. The S3 credentials are scoped to the deployment steps rather than dependency installation and checks.
 
 To configure the secret with GitHub CLI from a local production env file:
 
@@ -623,3 +625,20 @@ Reference: [Diagnose a fleet](https://github.com/denoland/celld/blob/main/docs/R
 - [Guarantees](https://github.com/denoland/celld/blob/main/docs/guarantees.md)
 - [Telemetry](https://github.com/denoland/celld/blob/main/docs/telemetry.md)
 - [Testing and performance notes](https://github.com/denoland/celld/blob/main/docs/testing.md)
+
+---
+
+# Starter-specific verification: static Waku + Hono
+
+The one production Worker remains `./src/api/index.ts` with the original Durable Object bindings and migrations.
+
+- Run `pnpm dev:celld` (Celld on port 9876) and `pnpm dev` (Waku on port 3000) in two terminals. `pnpm dev:celld` alone runs just the API.
+- Waku's `waku build` must emit `dist/public/index.html`, each `staticPaths` route under `dist/public/rooms/*/index.html`, and browser assets.
+- The deploy config must reference `./dist/public` with `html_handling: "drop-trailing-slash"` and Worker-first routes for `/api/*` and `/health`. **No SPA fallback** and no source directory assets.
+- Verify Celld serves `/`, `/rooms/drivers`, and `/rooms/dispatch`, including CSS/JS files.
+- Verify Hono REST responses under `/api/*` stay JSON; opening two chat windows should demonstrate Durable Object WebSocket broadcasts.
+- Verify reconnect after a backend restart, with a history refresh to recover missed messages.
+- With Waku's source entry and pages removed and the web scripts pruned, the same `pnpm check` and `pnpm deploy` should behave as API-only.
+- A Waku page requiring request-time rendering, Server Actions or dynamic API routes **cannot** work from this static-only build. Keep dynamic operations in Hono until a server-capable Waku runtime is deliberately introduced and tested.
+
+Production GitHub Actions uses the same frozen root pnpm install, `ENV_FILE` secret contract, dry-run and `pnpm deploy` pipeline regardless of whether Waku pages exist. A fleet deploy replaces the entire current application, including any old static assets. See [README.md](./README.md) and [ARCHITECTURE.md](./ARCHITECTURE.md) for source boundaries.

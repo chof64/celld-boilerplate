@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { parse as parseDotEnv } from "dotenv";
 
-import { workerEnvironment } from "../env";
+import { workerEnvironment } from "../src/api/env";
 
 export type EnvironmentSource = Record<string, string | undefined>;
 

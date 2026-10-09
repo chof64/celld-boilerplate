@@ -1,11 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-
-export interface ChatMessage {
-  id: string;
-  userName: string;
-  text: string;
-  sentAt: number;
-}
+import type { ChatMessage } from "../../lib/chat";
 
 export interface RoomSnapshot {
   connections: number;

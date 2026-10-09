@@ -1,28 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { selectWorkerEnvironment, serializeDevVars } from "../scripts/env";
 
-import {
-  selectWorkerEnvironment,
-  serializeDevVars,
-} from "../celld/scripts/env";
-
-describe("Worker environment", () => {
-  it("exposes only declared Worker variables", () => {
-    expect(
-      selectWorkerEnvironment({
-        GREETING: "Hello",
-        CELLD_BUCKET: "s3://root-level-fleet-data",
-        CI_JOB_TOKEN: "do-not-expose",
-      }),
-    ).toEqual({
-      GREETING: "Hello",
-    });
+describe("Worker variable boundary", () => {
+  it("does not expose infrastructure secrets", () => {
+    expect(selectWorkerEnvironment({ GREETING: "hello", CELLD_BUCKET: "private", AWS_SECRET_ACCESS_KEY: "no" })).toEqual({ GREETING: "hello" });
   });
-
-  it("serializes selected values for Celld .dev.vars", () => {
-    expect(
-      serializeDevVars({
-        GREETING: "Hello Celld",
-      }),
-    ).toBe('GREETING="Hello Celld"\n');
+  it("writes a deterministic vars file", () => {
+    expect(serializeDevVars({ GREETING: "Hello" })).toBe('GREETING="Hello"\n');
+  });
+  it("rejects multiline vars", () => {
+    expect(() => serializeDevVars({ GREETING: "a\nb" })).toThrow("newline");
   });
 });

@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 
 import type { Env } from "../../env";
-import { roomParams } from "./room-params";
+import { roomParams } from "./params";
 
 const messageBody = z.object({
   userName: z.string().trim().min(1).max(40),
