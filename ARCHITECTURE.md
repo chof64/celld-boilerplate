@@ -335,7 +335,7 @@ project/
 │       ├── dev.ts
 │       ├── deploy.ts
 │       ├── web-config.ts         # Optional generated assets config
-│       └── deploy-web.ts         # Optional SPA + Hono deploy
+│       └── deploy-app.ts         # Automatically deploy API or API + SPA
 ├── web/                           # Isolated, optional client-side React/Vite app
 │   ├── src/
 │   ├── index.html
@@ -349,7 +349,7 @@ project/
 └── .wrangler.deploy.jsonc         # Generated and ignored
 ```
 
-A backend-only service never installs `web/` dependencies, builds the frontend, or deploys assets. The optional frontend is an ordinary static client and must use the same Hono REST/WebSocket URLs as non-web clients. No Hono-specific client SDK or Waku Server Action is required.
+A service without `web/` never installs frontend dependencies, builds the frontend, or deploys assets. The optional frontend is an ordinary static client and must use the same Hono REST/WebSocket URLs as non-web clients. No Hono-specific client SDK or Waku Server Action is required.
 
 ## 9. Runtime entrypoint
 
@@ -553,29 +553,23 @@ Hono owns the HTTP and WebSocket boundary for browsers, Flutter, partner integra
 
 An optional React SPA is not an SSR/React Server Components application. Use the [celld-waku](https://github.com/chof64/celld-waku) starter when server-rendered React and Server Actions materially improve developer velocity. The Hono API remains usable with no frontend whatsoever.
 
-See [WEB.md](./WEB.md) for the optional client and both deployment modes.
+See [WEB.md](./WEB.md) for the optional client. The same deploy command works whether or not that directory exists.
 
 ## 19. Optional static assets and one canonical Wrangler file
 
-The canonical root `wrangler.jsonc` intentionally declares **no** `assets`. The default `pnpm deploy` publishes the API and Durable Objects only.
+The canonical root `wrangler.jsonc` intentionally declares **no** `assets`. The single `pnpm deploy` command inspects the repository layout. With no `web/`, it publishes the API and Durable Objects only. With a `web/` project, it automatically builds `web/dist`, derives an ignored `.wrangler.web.jsonc` containing the same Worker identity, bindings and migrations **plus** SPA assets, and invokes the same native Celld deployment helper. An incomplete `web/` fails explicitly, rather than silently excluding it.
 
-Opt-in `pnpm deploy:web` builds `web/dist`, derives an ignored `.wrangler.web.jsonc` containing the same Worker identity, bindings and migrations **plus** SPA assets, and calls the same native Celld deployment helper. Celld serves static assets and its `single-page-application` fallback; `run_worker_first` routes `/api/*` and `/health` to Hono. Never maintain a parallel hand-edited Wrangler file.
-
-A later API-only deployment replaces the full application and removes the SPA assets; keep the deployment mode consistent for the fleet. One fleet cannot safely receive independent standalone Hono and Waku publishes.
+Celld serves static assets with `single-page-application` fallback, while `run_worker_first` routes `/api/*` and `/health` to Hono. Never maintain a parallel hand-edited Wrangler file. Removing `web/` from the repository and redeploying replaces the application without those assets. One fleet cannot safely receive independent standalone Hono and Waku publishes.
 
 ## 20. Production deployment
 
-The default API-only project command is:
+The only project deployment command is:
 
 ```bash
 pnpm deploy
 ```
 
-For the optional React SPA and Hono API in the **same Celld application**, use:
-
-```bash
-pnpm deploy:web
-```
+If `web/` exists, the command automatically includes the compiled client-side SPA; otherwise it deploys Hono alone.
 
 The wrapper ultimately invokes native:
 
@@ -705,7 +699,6 @@ pnpm deploy
 pnpm dev:web
 pnpm build:web
 pnpm check:web
-pnpm deploy:web
 ```
 
 The Waku sibling also provides framework-native `pnpm build` and `pnpm build:celld` for its React application.
