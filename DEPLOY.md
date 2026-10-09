@@ -641,6 +641,6 @@ The root `wrangler.jsonc` points to `./src/api/index.ts`. It remains asset-free 
 - Open two browser windows and verify REST writes, Durable Object broadcasts and reconnect history resynchronization.
 - Preserve Worker name, Durable Object bindings and migrations across API-only and API+SPA deployments.
 
-Production GitHub Actions runs one `pnpm install`, one `pnpm check`, and the same `pnpm deploy` invocation for both repository layouts. There is no frontend deployment flag or duplicate `web/` package. The root dependency lockfile must be synchronized with React/Vite before reverting CI installs to `--frozen-lockfile`.
+Production GitHub Actions runs one `pnpm install`, one `pnpm check`, and the same `pnpm deploy` invocation for both repository layouts. There is no frontend deployment flag or duplicate `web/` package. The root dependency lockfile includes Hono and React/Vite so CI uses `--frozen-lockfile`.
 
 For development and source boundaries, see [WEB.md](./WEB.md). To host Hono and Waku together in one fleet, compose both Workers into one application and use one publisher.
