@@ -1,4 +1,4 @@
-import type { Room } from "./durable-objects/room";
+import type { Room } from "../src/api/durable-objects/room";
 
 export const workerEnvironment = {
   required: [] as const,
