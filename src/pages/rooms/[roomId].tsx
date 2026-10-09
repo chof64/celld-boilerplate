@@ -6,7 +6,7 @@ import { rooms } from "../../lib/chat";
 export default function RoomPage({ roomId }: PageProps<"/rooms/[roomId]">) {
   return (
     <>
-      <title>{roomId} · Celld Chat</title>
+      <title>{`${roomId} · Celld Chat`}</title>
       <ChatApp room={roomId} />
     </>
   );
