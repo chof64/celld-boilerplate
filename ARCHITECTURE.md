@@ -29,7 +29,7 @@ These principles are intentionally **identical in both Celld starters**. When ch
 | [`chof64/celld-hono`](https://github.com/chof64/celld-hono) | API-first, optional client-side web SPA | Hono REST/WebSocket APIs, Durable Objects, optional static React/Vite assets |
 | [`chof64/celld-waku`](https://github.com/chof64/celld-waku) | Server-rendered React full-stack applications | Waku pages, RSC/SSR, client components, Server Actions and API routes |
 
-They share **deployment, environment, security, and architectural principles**, not identical framework source code. Hono's optional web client does not change its API-first contract or introduce mandatory frontend dependencies. They may coexist as separate Worker scripts **only when composed into one Celld application deployment**, connected by service bindings. Independently deploying each starter to the same fleet replaces its current application; it does not merge scripts.
+They share **deployment, environment, security, and architectural principles**, not identical framework source code. Hono's optional web client does not change its API-first contract; API-only derivatives can remove browser entrypoints and prune frontend dependencies. They may coexist as separate Worker scripts **only when composed into one Celld application deployment**, connected by service bindings. Independently deploying each starter to the same fleet replaces its current application; it does not merge scripts.
 
 ## 2. Default stack
 
