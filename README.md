@@ -1,36 +1,36 @@
 # Celld + Hono
 
-A **backend-only** starter for [Celld](https://github.com/denoland/celld) built with [Hono](https://hono.dev/). Use it for REST APIs, WebSockets, Durable Objects, Queues, Workflows and other Celld-native backend services. It deliberately does **not** ship a frontend.
+An **API-first** [Celld](https://github.com/denoland/celld) starter built with [Hono](https://hono.dev/). Build REST APIs, WebSockets, Durable Objects, Queues and Workflows for browser, mobile and service clients. Optionally bundle a **client-side React/Vite SPA** with the **same** Celld application—without making frontend tooling mandatory.
 
 ## Sibling starters
 
 | Starter | Purpose |
 | --- | --- |
-| **[celld-hono](https://github.com/chof64/celld-hono)** (this repository) | Backend APIs, stateful coordination, Durable Objects and service workers |
-| **[celld-waku](https://github.com/chof64/celld-waku)** | Full-stack React: SSR, RSC, client components, Server Actions and API routes |
+| **[celld-hono](https://github.com/chof64/celld-hono)** (this repository) | API-first, optional client-side web SPA; ideal for shared web/mobile APIs |
+| **[celld-waku](https://github.com/chof64/celld-waku)** | React full-stack with SSR, RSC, Server Actions and web API routes |
 
-Both follow the [same shared architecture principles](./ARCHITECTURE.md#1-shared-architecture-principles), [Celld deployment runbook](./DEPLOY.md), env allowlist, `ENV_FILE` secret model and production workflow. They differ only where their framework responsibilities require it.
-
-Read [SYNC.md](./SYNC.md) when changing a convention that applies to both starters.
-
-Each standalone workflow publishes **one complete Celld application**. To put both Workers in a shared fleet, compose them in a single deployment and use one publisher; running both workflows independently against the same fleet would replace the application, not combine it.
+Both share the [same 13 architecture principles](./ARCHITECTURE.md#1-shared-architecture-principles), [Celld deployment runbook](./DEPLOY.md), application env allowlist, `ENV_FILE` secret model and native Celld workflow. [SYNC.md](./SYNC.md) describes their shared contract.
 
 ## Mental model
 
 ```text
-Mobile / web / service client
-            |
-      REST / WebSocket
-            v
-        Hono Worker
-          /     \
-    Stateless    Durable Object
-      logic      RPC / WebSocket
-          \     /
-         Celld fleet
+Optional React SPA     Flutter/mobile       External services
+        |                   |                       |
+        +-------------------+-----------------------+
+                            |
+                     REST / WebSocket
+                            v
+                        Hono Worker
+                         /       \
+                 Stateless      Durable Object
+                  API work      RPC / WebSocket
+                         \       /
+                          Celld fleet
 ```
 
-Hono owns the public HTTP contract. Native Celld bindings and Durable Objects remain behind that boundary. Reusable domain functions can also be called by queues, workflows and scheduled handlers.
+A frontend uses the **same stable HTTP and realtime endpoints** as mobile clients. Celld can serve the compiled SPA when requested; the default project deploy remains API-only. For server-rendered React pages and Server Actions, choose [celld-waku](https://github.com/chof64/celld-waku).
+
+**Fleet note:** Each standalone deployment replaces one whole Celld application. To co-host Hono and Waku Workers, publish a composed application from one deployment pipeline—not two independent repository workflows.
 
 ## Requirements
 
@@ -40,52 +40,57 @@ Hono owns the public HTTP contract. Native Celld bindings and Durable Objects re
 
 Production also needs access to the fleet object store through Celld's normal environment/credential configuration.
 
-## API-only chat example
+## Chat reference application
 
-The starter includes a small chat backend for exercising Hono routing, Zod validation, Celld Durable Object RPC, SQLite, and WebSocket upgrades—**without bundling a UI**.
+The API-first Hono chat demonstrates Durable Object RPC, room-local SQLite, REST messages, and hibernatable WebSockets. An **optional React/Vite chat client** under `web/` uses exactly those public endpoints. It is a client, not a second server or separate domain model.
 
 ```text
-GET  /api/rooms/:roomId/messages   Hono -> Room.listMessages() RPC
-POST /api/rooms/:roomId/messages   Hono -> Room.sendMessage() RPC
-GET  /api/rooms/:roomId/socket     Hono -> Room.fetch() WebSocket
+GET  /api/rooms/:roomId           Room snapshot
+GET  /api/rooms/:roomId/messages  Last 100 messages
+POST /api/rooms/:roomId/messages  Validate, persist and broadcast
+GET  /api/rooms/:roomId/socket    WebSocket notifications
 ```
 
-### Run it
+### API-only development (default)
 
 ```sh
-pnpm install
+pnpm install --frozen-lockfile
 cp .env.example .env
 pnpm dev
 ```
 
-Celld serves the API at `http://127.0.0.1:9876`:
+API listens at `http://127.0.0.1:9876`. For example:
 
 ```sh
 curl http://127.0.0.1:9876/health
 curl http://127.0.0.1:9876/api/rooms/lobby/messages
-curl -X POST http://127.0.0.1:9876/api/rooms/lobby/messages \
-  -H 'content-type: application/json' \
-  -d '{"userName":"Ada","text":"Hello from Celld"}'
 ```
 
-There is no homepage or SPA. For a web frontend, start with [celld-waku](https://github.com/chof64/celld-waku).
+### Optional client-side React chat
+
+In a **second terminal**, install the independent web project and launch Vite:
+
+```sh
+pnpm --dir web install --no-frozen-lockfile
+pnpm dev:web
+```
+
+Open **http://127.0.0.1:5173**. Vite proxies the same REST URLs and WebSocket upgrades to Hono. The root API does not need React or Vite installed.
+
+Read [WEB.md](./WEB.md) for the complete local setup and optional SPA deployment model.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm dev` | Alias for the backend Celld development runtime |
-| `pnpm dev:celld` | Generate local Worker vars and run native Celld development |
-| `pnpm typecheck` | Type-check the boilerplate |
-| `pnpm test` | Run tests |
-| `pnpm check` | Run type-checking and tests |
-| `pnpm deploy` | Prepare runtime vars and run native `celld deploy` |
+| `pnpm dev` / `pnpm dev:celld` | Native API-only Celld development |
+| `pnpm typecheck` / `pnpm test` / `pnpm check` | Backend checks; no frontend install needed |
+| `pnpm deploy` | API-only Celld deploy, no SPA assets |
+| `pnpm dev:web` | Optional React/Vite development on port 5173 |
+| `pnpm build:web` / `pnpm check:web` | Optional React SPA verification and build |
+| `pnpm deploy:web` | Build and deploy Hono + SPA assets as one Celld application |
 
-To intentionally reset local Celld state, use Celld directly:
-
-```bash
-celld dev . --clean
-```
+To intentionally reset local Celld state, run `celld dev . --clean` directly.
 
 ## Public API: REST first
 
@@ -181,8 +186,11 @@ Celld infrastructure variables such as `CELLD_BUCKET`, `S3_ENDPOINT`, cloud cred
 ## Production
 
 ```bash
-pnpm deploy
+pnpm deploy      # API-only (default)
+pnpm deploy:web  # Optional, bundles the web/ SPA into the same Celld application
 ```
+
+The second command requires a prior install of `web/` dependencies. Both preserve the same Worker and Durable Object bindings. Switching from `deploy:web` back to `deploy` removes previously deployed SPA assets; choose the mode deliberately.
 
 The deployment wrapper:
 
@@ -208,6 +216,7 @@ A production deployment workflow is included at `.github/workflows/deploy.yml`. 
 - Variables: `CELLD_VERSION`, `CELLD_BUCKET`, `AWS_REGION`, and `S3_ENDPOINT` when using S3-compatible storage (omit the endpoint for AWS S3).
 - Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`.
 - Secret `ENV_FILE`: application runtime variables only.
+- Optional production Environment variable `DEPLOY_WEB=true` to include the React SPA; omitted/false means API-only.
 
 Set `CELLD_VERSION` to the exact release tag used by the running Celld fleet, such as `v0.1.0`. The workflow requires it and installs that release. Keep it aligned when upgrading the fleet.
 
@@ -217,17 +226,19 @@ The `ENV_FILE` secret contains only application runtime values, for example:
 GREETING=Hello from production
 ```
 
-The workflow installs the pinned Celld release and runs `pnpm check` before materializing `ENV_FILE` as `.env`. It rejects fleet settings inside `ENV_FILE`, then passes the bucket settings and credentials directly to the dry-run and deploy processes. Deploys are serialized with workflow concurrency.
+The workflow installs the pinned Celld release and runs `pnpm check` before materializing `ENV_FILE` as `.env`. It rejects fleet settings inside `ENV_FILE`, then passes the bucket settings and credentials directly to the dry-run and deploy processes. Deploys are serialized with workflow concurrency within this repository. When `DEPLOY_WEB=true`, the workflow separately installs and checks `web/` and selects `pnpm deploy:web` for both dry-run and publish.
 
-Only variables declared in `celld/env.ts` become Worker bindings. The fleet settings and credentials remain deploy-process environment variables and are not copied into the Worker.
+Only variables declared in `celld/env.ts` become Worker bindings. `DEPLOY_WEB` is a CI deployment switch, not an application secret or Worker variable. The fleet settings and credentials remain deploy-process environment variables and are not copied into the Worker.
 
 See [DEPLOY.md](./DEPLOY.md#github-actions) for the full workflow contract and secret setup.
 
-## Full-stack applications
+## Choose Hono or Waku
 
-Use [celld-waku](https://github.com/chof64/celld-waku) for pages, SSR, client components and Server Actions. It follows the same Celld runtime conventions, production `ENV_FILE` contract and infrastructure runbook. Waku API endpoints may access Celld bindings directly; when they need a separate stateful Durable Object implementation, communicate with this Hono Worker through an explicit service binding.
+Use **Hono** when the public API is the core of the application and browser, mobile and service clients share REST/WebSocket contracts. Add a client-side SPA only when needed; no SSR or Server Actions are required.
 
-The default `wrangler.jsonc` intentionally retains its existing Worker name (`celld-boilerplate`) to avoid silently changing a deployed script or Durable Object identity merely because the repository was renamed. Choose a new Worker name **before a first deployment**, or plan an explicit migration for an existing one.
+Use **[celld-waku](https://github.com/chof64/celld-waku)** when React Server Components, SSR, server-rendered routes, and Server Actions are the primary developer experience. Waku also supports public HTTP APIs; it is not web-only.
+
+Hono's existing Worker script name (`celld-boilerplate`) intentionally remains unchanged to protect deployed script and Durable Object identities after the repository rename. Set a new name only **before** a first deployment, or perform an intentional migration.
 
 ## Philosophy
 
