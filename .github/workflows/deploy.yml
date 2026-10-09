@@ -56,6 +56,14 @@ jobs:
       - name: Verify
         run: pnpm check
 
+      - name: Install optional SPA dependencies
+        if: vars.DEPLOY_WEB == 'true'
+        run: pnpm --dir web install --no-frozen-lockfile
+
+      - name: Verify optional SPA
+        if: vars.DEPLOY_WEB == 'true'
+        run: pnpm check:web
+
       - name: Write deployment environment
         shell: bash
         env:
@@ -92,6 +100,7 @@ jobs:
 
       - name: Dry-run deployment
         env:
+          DEPLOY_WEB: ${{ vars.DEPLOY_WEB }}
           CELLD_BUCKET: ${{ vars.CELLD_BUCKET }}
           S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
           AWS_REGION: ${{ vars.AWS_REGION }}
@@ -107,14 +116,24 @@ jobs:
             fi
           done
 
-          pnpm deploy -- --dry-run
+          if [[ "$DEPLOY_WEB" == "true" ]]; then
+            pnpm deploy:web -- --dry-run
+          else
+            pnpm deploy -- --dry-run
+          fi
 
       - name: Deploy
         env:
+          DEPLOY_WEB: ${{ vars.DEPLOY_WEB }}
           CELLD_BUCKET: ${{ vars.CELLD_BUCKET }}
           S3_ENDPOINT: ${{ vars.S3_ENDPOINT }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-        run: pnpm deploy
+        run: |
+          if [[ "$DEPLOY_WEB" == "true" ]]; then
+            pnpm deploy:web
+          else
+            pnpm deploy
+          fi
