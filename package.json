@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "tsx scripts/app.ts dev",
     "dev:celld": "tsx scripts/dev.ts",
-    "dev:web": "waku dev",
+    "dev:web": "waku dev --host 127.0.0.1",
     "build:web": "waku build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
