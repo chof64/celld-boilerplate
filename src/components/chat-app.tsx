@@ -97,57 +97,81 @@ export function ChatApp({ room }: { room: string }) {
   }
 
   return (
-    <main className="chat">
-      <header>
-        <h1>Celld + Hono + Waku</h1>
-        <p>Static Waku pages. Live Hono APIs and Durable Objects.</p>
+    <div className="chat-page">
+      <header className="chat-topbar">
+        <div className="chat-topbar-inner">
+          <a className="chat-back" href="/">
+            <span aria-hidden="true">←</span><span>celld-hono</span>
+          </a>
+          <div className={`chat-connection${status === "Live" ? " is-live" : ""}`} role="status">
+            <span aria-hidden="true" />{status}
+          </div>
+        </div>
       </header>
 
-      <div className="controls">
-        <label>
-          Room
-          <select
-            value={room}
-            onChange={(event) => {
-              const next = event.target.value;
-              window.location.assign(next === "lobby" ? "/" : `/rooms/${next}`);
-            }}
-          >
-            {rooms.map((id) => <option key={id} value={id}>{id}</option>)}
-          </select>
-        </label>
-        <label>
-          Name
-          <input value={name} maxLength={40} onChange={(event) => setName(event.target.value)} />
-        </label>
-        <span role="status">{status}</span>
-      </div>
+      <main className="chat-main">
+        <div className="chat-room-header">
+          <div className="chat-room-title">
+            <p className="chat-eyebrow">DEMO ROOM</p>
+            <h1>#{room}</h1>
+            <p className="chat-description">Messages update in real time.</p>
+          </div>
+          <div className="chat-controls">
+            <label className="chat-field">
+              <span>Room</span>
+              <select
+                value={room}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  window.location.assign(next === "lobby" ? "/chat" : `/rooms/${next}`);
+                }}
+              >
+                {rooms.map((id) => <option key={id} value={id}>{id}</option>)}
+              </select>
+            </label>
+            <label className="chat-field chat-name-field">
+              <span>Your name</span>
+              <input value={name} maxLength={40} onChange={(event) => setName(event.target.value)} />
+            </label>
+          </div>
+        </div>
 
-      <section className="messages" aria-label="Messages" aria-live="polite">
-        {messages.length === 0 && <p className="empty">No messages yet.</p>}
-        {messages.map((message) => (
-          <article key={message.id}>
-            <strong>{message.userName}</strong>
-            <time dateTime={new Date(message.sentAt).toISOString()}>
-              {new Date(message.sentAt).toLocaleTimeString()}
-            </time>
-            <p>{message.text}</p>
-          </article>
-        ))}
-      </section>
+        <section className="chat-messages" aria-label="Messages" aria-live="polite">
+          {messages.length === 0 ? (
+            <div className="chat-empty">
+              <span className="chat-empty-mark" aria-hidden="true">↳</span>
+              <p>No messages yet</p>
+              <span>Say hello to start the conversation.</span>
+            </div>
+          ) : messages.map((message) => (
+            <article className="chat-message" key={message.id}>
+              <div className="chat-message-meta">
+                <strong>{message.userName}</strong>
+                <time dateTime={new Date(message.sentAt).toISOString()}>
+                  {new Date(message.sentAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                </time>
+              </div>
+              <p>{message.text}</p>
+            </article>
+          ))}
+        </section>
 
-      {error && <p className="error" role="alert">{error}</p>}
-      <form onSubmit={(event) => void send(event)}>
-        <input
-          aria-label="Message"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder="Write a message…"
-          maxLength={2000}
-        />
-        <button disabled={!draft.trim() || !name.trim() || sending}>Send</button>
-      </form>
-      <footer>Unauthenticated reference chat — not production messaging.</footer>
-    </main>
+        {error && <p className="chat-error" role="alert">{error}</p>}
+        <form className="chat-composer" onSubmit={(event) => void send(event)}>
+          <label className="visually-hidden" htmlFor="chat-message">Message</label>
+          <input
+            id="chat-message"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder={`Message #${room}`}
+            maxLength={2000}
+          />
+          <button aria-label="Send message" disabled={!draft.trim() || !name.trim() || sending}>
+            <span aria-hidden="true">↑</span>
+          </button>
+        </form>
+        <p className="chat-footnote">Open demo · No authentication · Not for production messaging</p>
+      </main>
+    </div>
   );
 }
