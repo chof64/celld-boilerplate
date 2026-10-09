@@ -43,7 +43,7 @@ The **seam** is deliberate: `src/api/` is server-only, `src/lib/` is safe to imp
 Requires Node.js 22.15+, pnpm, and a Celld CLI available on `PATH`.
 
 ```sh
-pnpm install --no-frozen-lockfile
+pnpm install --frozen-lockfile
 cp .env.example .env
 pnpm dev
 ```
@@ -111,7 +111,7 @@ A browser app is detected by root `index.html` and `src/main.tsx`. When these fi
 
 Each deploy replaces the current Celld application. Removing the frontend and redeploying intentionally removes previously published SPA assets. A fleet hosting Hono and Waku together must use **one composed deployment pipeline**, not two independent publishers.
 
-The included GitHub Actions workflow keeps `ENV_FILE` for app-only `KEY=value` secrets, and requires Celld bucket and infrastructure credentials separately in the production GitHub Environment. It uses the same `pnpm check` and `pnpm deploy` commands regardless of frontend presence. React/Vite dependencies are now part of the root package; the lockfile needs refreshing before frozen installs can resume.
+The included GitHub Actions workflow keeps `ENV_FILE` for app-only `KEY=value` secrets, and requires Celld bucket and infrastructure credentials separately in the production GitHub Environment. It uses the same `pnpm check` and `pnpm deploy` commands regardless of frontend presence. React/Vite dependencies are now part of the root package; the single root lockfile covers Hono and the optional React/Vite app.
 
 Read [WEB.md](./WEB.md) for the detailed source rules, local and production checks, and [DEPLOY.md](./DEPLOY.md) for single-node/multi-node fleet operations, upgrades and secrets.
 
