@@ -23,9 +23,8 @@ src/
   app.tsx                        Optional React chat example
   main.tsx                       Optional client entry
   styles.css
-celld/
-  env.ts                         Worker bindings and env allowlist
-  scripts/                       Development and deployment helpers
+scripts/                           Development and deployment helpers
+src/api/env.ts                     Worker bindings and env allowlist
 index.html                       Optional web entry
 vite.config.ts                   Vite and local API proxy
 wrangler.jsonc                   One canonical Celld config
