@@ -8,7 +8,7 @@ This document has **identical contents** in [celld-hono](https://github.com/chof
 | --- | --- | --- |
 | `ARCHITECTURE.md` | The 13 numbered **Shared architecture principles** and sibling table must match word-for-word | Hono HTTP/DO implementation vs Waku React/SSR/RSC design |
 | `DEPLOY.md` | Node topology, fleet security, upgrades, drain, CI, environment settings, and deployment instructions must match | App-specific test/checklist appendix |
-| `.github/workflows/deploy.yml` | Same triggers, production Environment, `ENV_FILE`, Celld version, credentials, dry-run, serialized deploy | Hono automatically builds a frontend from root `index.html` + `src/main.tsx` when present; Waku builds React by default. Lockfile handling is framework-specific until dependencies are pinned |
+| `.github/workflows/deploy.yml` | Same triggers, production Environment, `ENV_FILE`, Celld version, credentials, dry-run, serialized deploy | Hono automatically builds a frontend from root `index.html` + `src/main.tsx` when present; Waku builds React by default. Hono uses a frozen root lockfile; Waku's build/lockfile policy is framework-specific |
 | `celld/scripts/env.ts` | Same `.env` overlay, allowlist, and `.dev.vars` serialization | None; keep source identical |
 | `celld/scripts/dev.ts` | Same native `celld dev` launcher with an optional config path | Waku prepares/builds its frontend and passes generated `.wrangler.celld.jsonc` |
 | `celld/scripts/deploy.ts` | Same temporary `.wrangler.deploy.jsonc` and native `celld deploy` wrapper with optional source config | Waku prepares a generated `.wrangler.celld.jsonc` from the canonical file |
