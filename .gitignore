@@ -6,3 +6,5 @@ node_modules/
 .celld/
 coverage/
 dist/
+src/pages.gen.ts
+*.tsbuildinfo
