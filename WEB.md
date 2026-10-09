@@ -41,7 +41,7 @@ wrangler.jsonc               One canonical Celld configuration
 ## Development
 
 ```sh
-pnpm install --no-frozen-lockfile
+pnpm install --frozen-lockfile
 cp .env.example .env
 pnpm dev
 ```
@@ -87,7 +87,7 @@ Each Celld deployment replaces the current application. Removing the browser sou
 
 The production workflow runs the same `pnpm check` and `pnpm deploy` commands regardless of whether a web frontend exists. It preserves the existing `ENV_FILE` application-only secret, GitHub production Environment, pinned Celld version, dry-run, and isolated infrastructure credentials.
 
-React/Vite dependencies now live in the **same root package** as Hono to keep a seamless `src/` developer experience. A project permanently removing the frontend can also prune those dependencies, but removing the browser entrypoints is enough to disable web build and deployment. The existing pnpm lockfile must be refreshed for the newly combined dependency graph before frozen CI installs can resume; CI temporarily uses `--no-frozen-lockfile`.
+React/Vite dependencies now live in the **same root package** as Hono to keep a seamless `src/` developer experience. A project permanently removing the frontend can also prune those dependencies, but removing the browser entrypoints is enough to disable web build and deployment. The root pnpm lockfile now includes Hono, React and Vite; CI uses frozen installs for reproducibility.
 
 ## Chat reference checks
 
