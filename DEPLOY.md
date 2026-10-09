@@ -628,11 +628,25 @@ Reference: [Diagnose a fleet](https://github.com/denoland/celld/blob/main/docs/R
 
 ---
 
-# Starter-specific verification: Hono backend
+# Starter-specific verification: Hono API-first (optional React SPA)
 
-- Confirm `GET /health` returns JSON and the Worker does **not** serve a default frontend or SPA fallback.
-- Confirm the chat REST endpoints validate inputs and reach the `Room` Durable Object through native RPC.
-- Confirm a WebSocket upgrade reaches the `Room` Durable Object and reconnects cleanly after node restarts.
-- Keep the deployed Worker name and `Room` migration identities stable; renaming the GitHub repository is not a Worker migration.
+**Default mode: API-only.**
 
-For frontend rendering and Waku's additional runtime checks, use [celld-waku](https://github.com/chof64/celld-waku/blob/main/DEPLOY.md).
+- Confirm `pnpm dev`, `pnpm check`, and `pnpm deploy -- --dry-run` require no React/Vite dependencies.
+- Confirm `GET /health` returns JSON and API-only deployment has no default SPA fallback.
+- Confirm Hono chat REST endpoints validate input and call the `Room` Durable Object with native RPC.
+- Confirm WebSocket upgrades reach the `Room` Durable Object and reconnect correctly after a node restart.
+
+**Opt-in mode: same-origin API + React SPA.**
+
+- Install the separate `web/` dependencies and run `pnpm check:web`.
+- Run `pnpm deploy:web -- --dry-run`; verify the generated Celld configuration includes `./web/dist`, SPA fallback, and worker-first routes for `/api/*` and `/health`.
+- Confirm `GET /rooms/drivers` refreshes to the SPA, JavaScript/CSS assets load, and `GET /api/rooms/lobby/messages` remains JSON rather than HTML.
+- Open two browser windows, send a message, and verify WebSocket delivery.
+- Switch back to API-only deployment and verify previously published frontend assets are removed.
+- Keep deployed Worker name, Durable Object bindings and migration identities stable in **both** modes.
+
+Production GitHub Actions uses optional GitHub Environment variable `DEPLOY_WEB=true` to select SPA inclusion. Omission defaults to API-only. The same `ENV_FILE` secret and Celld fleet credentials apply to both modes. **Do not** include `DEPLOY_WEB` in application secrets. Never deploy Hono and Waku separately into the same fleet: compose scripts into a single application and publish once.
+
+See [WEB.md](./WEB.md) for local development and deployment commands. For SSR/RSC, use the [celld-waku](https://github.com/chof64/celld-waku) starter.
+
