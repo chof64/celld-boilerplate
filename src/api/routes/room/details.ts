@@ -1,7 +1,7 @@
 import { sValidator } from "@hono/standard-validator";
 import { Hono } from "hono";
 
-import type { Env } from "../../../../celld/env";
+import type { Env } from "../../env";
 import { roomParams } from "./params";
 
 export const roomRoute = new Hono<{ Bindings: Env }>().get(
