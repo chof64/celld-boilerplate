@@ -3,8 +3,7 @@
     "target": "ES2022",
     "lib": [
       "ES2022",
-      "DOM",
-      "DOM.Iterable"
+      "DOM"
     ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
@@ -12,12 +11,9 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "isolatedModules": true,
     "types": [
-      "node",
       "vite/client"
-    ],
-    "allowImportingTsExtensions": true
+    ]
   },
   "include": [
     "src/**/*.tsx",
@@ -25,7 +21,6 @@
     "vite.config.ts"
   ],
   "exclude": [
-    "src/api/**",
-    "celld/**"
+    "src/api/**"
   ]
 }
