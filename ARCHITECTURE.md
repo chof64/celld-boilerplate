@@ -9,7 +9,7 @@ The goal is a small, opinionated **API-first** Celld application shape with sens
 These principles are intentionally **identical in both Celld starters**. When changing a shared convention, update both repositories together; framework-specific sections below may differ.
 
 1. **Celld is the execution and deployment runtime.** Use its supported Workers, Durable Objects, service bindings, Queues, Workflows, Cron, KV, D1, and R2 surfaces directly instead of inventing a Celld SDK.
-2. **Keep framework conventions native.** Hono owns API-first HTTP routes; an optional browser SPA uses standard client-side tooling. Waku owns React pages, layouts, Server Components, client components, API routes, and Server Actions. Do not implement a competing router.
+2. **Keep framework conventions native.** Hono owns API-first HTTP routes; it can serve a static Waku frontend without running a Waku server in production. The standalone Waku starter focuses on SSR, Server Components, API routes, and Server Actions. Do not implement a competing router.
 3. **Use an explicit public contract.** RESTful HTTP is the default for mobile clients, webhooks, integrations, and shared APIs. Waku Server Actions are suitable for application UI mutations, not a replacement for external API contracts.
 4. **Give stateful entities a clear owner.** Durable Objects coordinate entity-local work. Prefer native Durable Object RPC for method calls when available; use `fetch()` for HTTP or WebSocket semantics. Waku can reach a separate Hono/DO Worker through a service binding.
 5. **Keep business logic independent of transport.** HTTP routes, Server Actions, Queues, Workflows, and Durable Objects should delegate reusable domain operations to plain modules, rather than duplicating rules.
@@ -26,7 +26,7 @@ These principles are intentionally **identical in both Celld starters**. When ch
 
 | Repository | Primary purpose | Routing and runtime boundary |
 | --- | --- | --- |
-| [`chof64/celld-hono`](https://github.com/chof64/celld-hono) | API-first, optional client-side web SPA | Hono REST/WebSocket APIs, Durable Objects, optional static React/Vite assets |
+| [`chof64/celld-hono`](https://github.com/chof64/celld-hono) | API-first with optional static Waku frontend | Hono REST/WebSocket APIs, Durable Objects, pre-rendered Waku pages and React clients |
 | [`chof64/celld-waku`](https://github.com/chof64/celld-waku) | Server-rendered React full-stack applications | Waku pages, RSC/SSR, client components, Server Actions and API routes |
 
 They share **deployment, environment, security, and architectural principles**, not identical framework source code. Hono's optional web client does not change its API-first contract; API-only derivatives can remove browser entrypoints and prune frontend dependencies. They may coexist as separate Worker scripts **only when composed into one Celld application deployment**, connected by service bindings. Independently deploying each starter to the same fleet replaces its current application; it does not merge scripts.
