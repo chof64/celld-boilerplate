@@ -640,6 +640,6 @@ The **same** `pnpm deploy` command is used for both project layouts, including d
 - Open two chat tabs and verify REST message submission and Durable Object WebSocket notifications.
 - Removing `web/` and redeploying intentionally removes the previous SPA assets because each Celld deploy replaces the full application.
 
-Production GitHub Actions checks for `web/` and installs/tests the frontend only when present. It always executes `pnpm deploy -- --dry-run` then `pnpm deploy`. There is **no** `DEPLOY_WEB` toggle or other frontend deployment selector in environment variables, application secrets, or workflow inputs. The shared `ENV_FILE` and Celld fleet credentials contract is unchanged.
+Production GitHub Actions checks for `web/` and installs/tests the frontend only when present. It always executes `pnpm deploy -- --dry-run` then `pnpm deploy`. There is no frontend deployment selector in environment variables, secrets or workflow inputs. The shared `ENV_FILE` and Celld fleet credentials contract is unchanged.
 
 Keep the two standalone Hono/Waku applications on separate fleets unless composed into **one** application deployment. See [WEB.md](./WEB.md) for the optional frontend and [celld-waku](https://github.com/chof64/celld-waku) for SSR/RSC.
