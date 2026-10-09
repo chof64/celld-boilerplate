@@ -13,7 +13,7 @@ export function hasWebApplication(root = "."): boolean {
   return index;
 }
 
-export function createWebConfig(config: Record<string, unknown>) {
+export function createWebConfig(config: Record<string, unknown>): Record<string, unknown> {
   if (config.assets) {
     throw new Error("Do not serve src/ as static assets; only compiled dist/ is public");
   }
