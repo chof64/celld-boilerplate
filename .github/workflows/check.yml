@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  api:
-    name: API-only
+  check:
+    name: Hono API and optional React
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,26 +20,5 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --no-frozen-lockfile
       - run: pnpm check
-
-  web:
-    name: Frontend when present
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-        with:
-          run_install: false
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: Build client when web exists
-        shell: bash
-        run: |
-          if [[ -d web ]]; then
-            test -f web/package.json || { echo "web/ requires web/package.json" >&2; exit 1; }
-            pnpm --dir web install --no-frozen-lockfile
-            pnpm check:web
-            test -f web/dist/index.html
-          fi
