@@ -1,8 +1,20 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { parse, type ParseError, printParseErrorCode } from "jsonc-parser";
 
 export const webConfigPath = ".wrangler.web.jsonc";
 export const webDistPath = "web/dist";
+
+export function hasWebApplication(root = "."): boolean {
+  const web = join(root, "web");
+  if (!existsSync(web)) return false;
+
+  if (!statSync(web).isDirectory() || !existsSync(join(web, "package.json"))) {
+    throw new Error("web/ exists but is not a valid frontend project (missing web/package.json)");
+  }
+
+  return true;
+}
 
 export function createWebConfig(config: unknown): Record<string, unknown> {
   if (!config || typeof config !== "object" || Array.isArray(config)) {
@@ -11,7 +23,7 @@ export function createWebConfig(config: unknown): Record<string, unknown> {
 
   const root = config as Record<string, unknown>;
   if (root.assets !== undefined) {
-    throw new Error("The canonical wrangler.jsonc must stay API-only; configure SPA assets through deploy:web");
+    throw new Error("The canonical wrangler.jsonc must stay API-only; SPA assets are generated when web/ exists");
   }
   if (typeof root.name !== "string" || typeof root.main !== "string") {
     throw new Error("Expected a Worker name and entrypoint");
