@@ -77,7 +77,7 @@ pnpm dev:web
 
 Open **http://127.0.0.1:5173**. Vite proxies the same REST URLs and WebSocket upgrades to Hono. The root API does not need React or Vite installed.
 
-Read [WEB.md](./WEB.md) for the complete local setup and optional SPA deployment model.
+Read [WEB.md](./WEB.md) for setup and automatic SPA deployment when `web/` exists.
 
 ## Commands
 
@@ -85,10 +85,9 @@ Read [WEB.md](./WEB.md) for the complete local setup and optional SPA deployment
 | --- | --- |
 | `pnpm dev` / `pnpm dev:celld` | Native API-only Celld development |
 | `pnpm typecheck` / `pnpm test` / `pnpm check` | Backend checks; no frontend install needed |
-| `pnpm deploy` | API-only Celld deploy, no SPA assets |
+| `pnpm deploy` | Deploy Hono, automatically building/including `web/` if present |
 | `pnpm dev:web` | Optional React/Vite development on port 5173 |
 | `pnpm build:web` / `pnpm check:web` | Optional React SPA verification and build |
-| `pnpm deploy:web` | Build and deploy Hono + SPA assets as one Celld application |
 
 To intentionally reset local Celld state, run `celld dev . --clean` directly.
 
@@ -186,20 +185,19 @@ Celld infrastructure variables such as `CELLD_BUCKET`, `S3_ENDPOINT`, cloud cred
 ## Production
 
 ```bash
-pnpm deploy      # API-only (default)
-pnpm deploy:web  # Optional, bundles the web/ SPA into the same Celld application
+pnpm deploy -- --dry-run
+pnpm deploy
 ```
 
-The second command requires a prior install of `web/` dependencies. Both preserve the same Worker and Durable Object bindings. Switching from `deploy:web` back to `deploy` removes previously deployed SPA assets; choose the mode deliberately.
+This is the **only deployment command**, regardless of whether the optional web client exists. If `web/` is present, deployment builds and includes the SPA automatically; if it is absent, deployment contains Hono APIs and Durable Objects only. For local deployment with `web/`, install that project's dependencies once. Removing `web/` and deploying again intentionally removes its previously published assets.
 
 The deployment wrapper:
 
-1. resolves the application environment,
-2. validates the Worker environment contract,
-3. creates a temporary root `.wrangler.deploy.jsonc`,
-4. injects only allowed Worker variables,
-5. invokes native `celld deploy --config .wrangler.deploy.jsonc`,
-6. removes the temporary file when finished.
+1. detects `web/`; if present, builds it and adds generated SPA asset configuration,
+2. resolves the application environment and validates the Worker variable allowlist,
+3. creates an ignored temporary `.wrangler.deploy.jsonc` with only permitted bindings,
+4. invokes native `celld deploy --config .wrangler.deploy.jsonc`,
+5. removes the generated configurations when finished.
 
 Fleet configuration and object-store credentials are inherited by the Celld process. The project does not assume a CI system, secrets manager, cloud, or hosting platform.
 
@@ -216,7 +214,6 @@ A production deployment workflow is included at `.github/workflows/deploy.yml`. 
 - Variables: `CELLD_VERSION`, `CELLD_BUCKET`, `AWS_REGION`, and `S3_ENDPOINT` when using S3-compatible storage (omit the endpoint for AWS S3).
 - Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optionally `AWS_SESSION_TOKEN`.
 - Secret `ENV_FILE`: application runtime variables only.
-- Optional production Environment variable `DEPLOY_WEB=true` to include the React SPA; omitted/false means API-only.
 
 Set `CELLD_VERSION` to the exact release tag used by the running Celld fleet, such as `v0.1.0`. The workflow requires it and installs that release. Keep it aligned when upgrading the fleet.
 
@@ -226,9 +223,9 @@ The `ENV_FILE` secret contains only application runtime values, for example:
 GREETING=Hello from production
 ```
 
-The workflow installs the pinned Celld release and runs `pnpm check` before materializing `ENV_FILE` as `.env`. It rejects fleet settings inside `ENV_FILE`, then passes the bucket settings and credentials directly to the dry-run and deploy processes. Deploys are serialized with workflow concurrency within this repository. When `DEPLOY_WEB=true`, the workflow separately installs and checks `web/` and selects `pnpm deploy:web` for both dry-run and publish.
+The workflow installs the pinned Celld release, runs `pnpm check`, and **automatically installs/checks `web/` when it exists** before materializing `ENV_FILE` as `.env`. It rejects fleet settings inside `ENV_FILE`, then passes the bucket settings and credentials directly to the dry-run and deploy processes. Deploys are serialized with workflow concurrency within this repository. It always uses `pnpm deploy` for dry-run and publish.
 
-Only variables declared in `celld/env.ts` become Worker bindings. `DEPLOY_WEB` is a CI deployment switch, not an application secret or Worker variable. The fleet settings and credentials remain deploy-process environment variables and are not copied into the Worker.
+Only variables declared in `celld/env.ts` become Worker bindings. There is no frontend deployment toggle: repository structure determines whether SPA assets are bundled. Fleet settings and credentials remain deploy-process environment variables and are not copied into the Worker.
 
 See [DEPLOY.md](./DEPLOY.md#github-actions) for the full workflow contract and secret setup.
 
