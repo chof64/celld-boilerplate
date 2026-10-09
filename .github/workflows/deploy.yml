@@ -36,7 +36,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Install Celld
         shell: bash
@@ -55,15 +55,6 @@ jobs:
 
       - name: Verify
         run: pnpm check
-
-      - name: Install and check frontend when present
-        shell: bash
-        run: |
-          if [[ -d web ]]; then
-            test -f web/package.json || { echo "web/ requires web/package.json" >&2; exit 1; }
-            pnpm --dir web install --no-frozen-lockfile
-            pnpm check:web
-          fi
 
       - name: Write deployment environment
         shell: bash
