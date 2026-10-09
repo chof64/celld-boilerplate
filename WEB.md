@@ -1,14 +1,12 @@
 # Optional web client in celld-hono
 
-`celld-hono` is an **API-first starter**. The React chat under `web/` is an optional client of the same public REST and WebSocket API used by mobile apps and other integrations.
+`celld-hono` is an **API-first starter**. Its optional `web/` React/Vite chat is an ordinary client of the **same REST/WebSocket API** used by mobile apps and external consumers. For SSR/RSC and Server Actions, use [celld-waku](https://github.com/chof64/celld-waku).
 
-The root Hono package does **not** depend on React or Vite. `pnpm dev`, `pnpm check`, and `pnpm deploy` remain backend-only. A client application is never required to build or deploy the API.
-
-For a React Server Components / SSR-first application instead, use the [celld-waku](https://github.com/chof64/celld-waku) starter.
+The deployment convention is deliberately simple: **`pnpm deploy` automatically includes `web/` when it exists, otherwise deploys the backend alone.** No `DEPLOY_WEB` variable, dedicated web deploy command, or manually maintained alternative Wrangler file is needed.
 
 ## Development
 
-Install and start the Hono API in the first terminal:
+Install and start Hono in the first terminal:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -16,37 +14,39 @@ cp .env.example .env
 pnpm dev
 ```
 
-The Hono API listens at `http://127.0.0.1:9876`, including `GET /health`, `GET/POST /api/rooms/:roomId/messages`, and `GET /api/rooms/:roomId/socket` as a WebSocket upgrade.
+The API runs at `http://127.0.0.1:9876`, including room REST endpoints and `/api/rooms/:roomId/socket` for WebSockets.
 
-In a second terminal, install the **separate optional web project** and start Vite:
+If this project contains a `web/` directory, install its independent dependencies once and start Vite in another terminal:
 
 ```sh
 pnpm --dir web install --no-frozen-lockfile
 pnpm dev:web
 ```
 
-Open **http://127.0.0.1:5173**. Vite forwards `/api/*` and WebSocket upgrades to the Hono backend at `http://127.0.0.1:9876`. The proxy target can be changed for local development by setting `CHAT_API_ORIGIN` in the Vite process environment. This is a server-only Vite configuration value; it is **not** an app `VITE_*` variable or a Celld binding.
+Open **http://127.0.0.1:5173**. Vite proxies `/api/*` and WebSocket upgrades to Hono. To change the development backend origin, set `CHAT_API_ORIGIN` in the Vite process environment; it is not a browser-exposed environment variable or a Celld Worker binding.
 
-The React chat supports channel navigation via normal `/rooms/:roomId` URLs, history loading via REST, sending messages via REST, and realtime WebSocket notifications. Each message is deduplicated by ID and room history is resynced after reconnection.
+The optional client provides room navigation, history loaded through REST, posting through REST, realtime WebSocket events, reconnection and message deduplication. The browser does not import Hono server code or Durable Object bindings.
 
-The web client knows only public API paths. It never imports Hono server modules or accesses Durable Object bindings.
+`pnpm dev` intentionally starts the API alone. `pnpm dev:web` is a convenience for working on the browser client; neither is a deployment-mode switch.
 
-## Deployment modes
+## One deployment command
 
 ```sh
-# API-only, no React install/build required:
 pnpm deploy -- --dry-run
 pnpm deploy
-
-# Opt-in: API and compiled SPA on the SAME Celld application:
-pnpm --dir web install --no-frozen-lockfile
-pnpm deploy:web -- --dry-run
-pnpm deploy:web
 ```
 
-`pnpm deploy:web` builds `web/dist`, derives an ignored `.wrangler.web.jsonc` from the canonical root `wrangler.jsonc`, then uses the **same** `celld/scripts/deploy.ts` deployment helper. The temporary config inherits the exact Worker name, Durable Object bindings, and migrations without changing them. The temporary config is removed when the deployment command completes.
+The deploy command checks whether **`web/` exists**:
 
-The derived config adds:
+| Repository layout | Deployment result |
+| --- | --- |
+| No `web/` directory | Hono API and Durable Objects only |
+| `web/` with `web/package.json` | Build `web/dist` and deploy Hono plus SPA assets |
+| `web/` exists but is incomplete | Stop with an error rather than silently omit frontend code |
+
+When the frontend exists, `pnpm deploy` builds it using the separate `web/` dependencies, derives the ignored `.wrangler.web.jsonc` from the canonical root `wrangler.jsonc`, and invokes the same native Celld deployment helper as API-only mode. Install the web dependencies before local deployment; GitHub Actions installs them automatically when the directory exists.
+
+The generated asset configuration is:
 
 ```json
 {
@@ -58,29 +58,26 @@ The derived config adds:
 }
 ```
 
-The `/api/*` and `/health` paths reach Hono; static frontend assets are served by Celld, and browser navigations to paths like `/rooms/drivers` fall back to `index.html`. POSTs and WebSocket upgrades still reach the Worker through Celld.
+Thus Celld serves the compiled frontend and its SPA route fallback (for example `/rooms/drivers`), while `/api/*` and `/health` reach Hono. The generated config retains the **same Worker name, Durable Object bindings and migrations**. It is removed after deploy; the original root `wrangler.jsonc` is never modified.
 
-The repository still maintains **one canonical** `wrangler.jsonc`—the optional SPA configuration is an ignored build/deploy artifact, not another environment-specific file.
-
-**Important:** Every deployment replaces the fleet's current application. Deploying later with `pnpm deploy` publishes the API-only application and **removes** the web assets. Choose the appropriate mode consistently for the target fleet. A fleet hosting other Workers must be deployed from a single composed application pipeline.
+**Removing `web/` and deploying again removes the previously published SPA assets**, because a Celld application deployment replaces the fleet's current application. Keep that behavior in mind when restructuring repositories or composing multiple Workers into one application.
 
 ## GitHub Actions
 
-Production deployment shares the same `ENV_FILE` application-secret contract, fleet credentials, pinned Celld version and dry-run safeguards as [celld-waku](https://github.com/chof64/celld-waku). The default is **API-only**.
+The production workflow always calls **`pnpm deploy -- --dry-run`**, then **`pnpm deploy`**. It automatically installs and verifies the separate web dependencies when `web/` exists, and skips that work otherwise.
 
-To add the optional SPA to the deployed Hono application, set the `DEPLOY_WEB` variable to exactly `true` in the GitHub `production` Environment. The workflow then installs the separate web dependencies, verifies the frontend build, and uses `pnpm deploy:web` for both the dry-run and actual deploy. `DEPLOY_WEB` is a deployment selector, not a Worker secret, and must **not** be copied into `ENV_FILE`.
+There is **no deployment selector** in GitHub Environment variables or in `ENV_FILE`. The latter remains the application-only `KEY=value` secret, separate from the Celld fleet and object-store credentials. Worker bindings remain explicitly allowlisted in `celld/env.ts`.
 
-There is currently no committed `web/pnpm-lock.yaml`; the optional web install uses `--no-frozen-lockfile` while the root API install stays frozen. Generate and commit the web lockfile after dependency validation, then change web installs to `--frozen-lockfile`.
+The optional frontend package doesn't yet have a committed `web/pnpm-lock.yaml`. For now its dependency installation uses `--no-frozen-lockfile`, while the root Hono dependency installation remains frozen. After generating and committing a web lockfile, switch its installs to `--frozen-lockfile`.
 
 ## Acceptance checklist
 
-1. API-only `pnpm dev`, `pnpm check` and `pnpm deploy -- --dry-run` must work without installing the `web/` dependencies.
-2. With Vite on port 5173, `GET /api/rooms/lobby/messages` returns JSON and does not return SPA HTML.
-3. Open two React chat tabs; sending in one tab updates the other over WebSocket.
-4. Refresh `/rooms/drivers` directly in a browser and verify the SPA loads the selected room.
-5. Disconnect Hono and reconnect it; the UI should show reconnecting status and refresh missed messages.
-6. Validate build output and the generated Celld config before executing `deploy:web`.
-7. Verify a real Celld deployment serves compiled JS/CSS, returns API JSON and preserves WebSocket upgrades.
-8. Deploy API-only again to confirm frontend assets are no longer part of the application.
+1. With no `web/` directory, `pnpm deploy -- --dry-run` deploys only the Hono Worker and does not need React dependencies.
+2. With a valid `web/` directory, the same command builds and includes its assets. A malformed `web/` directory causes an explicit error.
+3. Refresh a nested SPA path like `/rooms/drivers` and confirm its JavaScript/CSS loads.
+4. Confirm `GET /api/rooms/lobby/messages` returns JSON, never SPA fallback HTML.
+5. Open two chat windows; sending in one should update the other via WebSockets without duplicates.
+6. Restart Hono and confirm reconnection retrieves missed messages.
+7. Remove `web/` and deploy again only when intentionally retiring the SPA; confirm Celld does not retain the old assets.
 
-This is an **unauthenticated, rate-unlimited public reference demo**. Do not expose it as production messaging without authentication, room authorization, rate limits and abuse controls. Xicar domain persistence remains PlanetScale Postgres and application S3; the chat Durable Object is a limited reference example.
+The chat is an **unauthenticated demonstration**, without room authorization, abuse controls or rate limits. Do not use it as a production messaging feature as-is. Xicar's persistent domain data remains authoritative in PlanetScale Postgres and application S3.
