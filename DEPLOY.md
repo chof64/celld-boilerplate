@@ -628,18 +628,19 @@ Reference: [Diagnose a fleet](https://github.com/denoland/celld/blob/main/docs/R
 
 ---
 
-# Starter-specific verification: Hono API-first (automatic optional SPA)
+# Starter-specific verification: colocated Hono API and optional React
 
-The **same** `pnpm deploy` command is used for both project layouts, including dry-runs.
+The root `wrangler.jsonc` points to `./src/api/index.ts`. It remains asset-free so Hono runs without a frontend. A root `index.html` plus `src/main.tsx` selects the browser app automatically.
 
-- Without `web/`, install only root dependencies and run `pnpm check` and `pnpm deploy -- --dry-run`. Confirm the resulting Celld application contains no SPA asset binding or fallback.
-- With a valid `web/` project, install its independent dependencies and run the same `pnpm deploy -- --dry-run`. Confirm it builds `web/dist`, includes a generated SPA asset configuration, and preserves Worker name/DO migration identities.
-- A `web/` directory lacking `web/package.json` must fail instead of quietly omitting expected frontend assets.
-- Verify `GET /health` and `GET /api/rooms/lobby/messages` return JSON, not SPA fallback HTML.
-- Confirm `GET /rooms/drivers` refreshes correctly and serves frontend JS/CSS when `web/` exists.
-- Open two chat tabs and verify REST message submission and Durable Object WebSocket notifications.
-- Removing `web/` and redeploying intentionally removes the previous SPA assets because each Celld deploy replaces the full application.
+- With no browser entrypoints, `pnpm dev`, `pnpm check` and `pnpm deploy -- --dry-run` should execute only the Hono backend/DO flow.
+- With the browser entrypoints present, `pnpm dev` launches Celld and Vite, and `pnpm check` runs TypeScript, tests and a Vite build. The same `pnpm deploy` builds and publishes the SPA.
+- Missing `index.html`, `src/main.tsx`, or Vite configuration when part of a browser app remains must cause an explicit error.
+- The derived `.wrangler.web.jsonc` must serve **only `./dist`**, not `./src`; Hono's privileged modules live under `src/api/`.
+- Verify `GET /health` and `GET /api/rooms/lobby/messages` return JSON rather than SPA fallback HTML.
+- Verify `GET /rooms/drivers` refreshes correctly when an SPA exists and its JS/CSS assets are served from `dist/`.
+- Open two browser windows and verify REST writes, Durable Object broadcasts and reconnect history resynchronization.
+- Preserve Worker name, Durable Object bindings and migrations across API-only and API+SPA deployments.
 
-Production GitHub Actions checks for `web/` and installs/tests the frontend only when present. It always executes `pnpm deploy -- --dry-run` then `pnpm deploy`. There is no frontend deployment selector in environment variables, secrets or workflow inputs. The shared `ENV_FILE` and Celld fleet credentials contract is unchanged.
+Production GitHub Actions runs one `pnpm install`, one `pnpm check`, and the same `pnpm deploy` invocation for both repository layouts. There is no frontend deployment flag or duplicate `web/` package. The root dependency lockfile must be synchronized with React/Vite before reverting CI installs to `--frozen-lockfile`.
 
-Keep the two standalone Hono/Waku applications on separate fleets unless composed into **one** application deployment. See [WEB.md](./WEB.md) for the optional frontend and [celld-waku](https://github.com/chof64/celld-waku) for SSR/RSC.
+For development and source boundaries, see [WEB.md](./WEB.md). To host Hono and Waku together in one fleet, compose both Workers into one application and use one publisher.
