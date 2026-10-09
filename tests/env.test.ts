@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { selectWorkerEnvironment, serializeDevVars } from "../celld/scripts/env";
+import { selectWorkerEnvironment, serializeDevVars } from "../scripts/env";
 
 describe("Worker variable boundary", () => {
   it("does not expose infrastructure secrets", () => {
