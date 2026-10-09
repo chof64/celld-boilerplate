@@ -20,10 +20,5 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --no-frozen-lockfile
-      - name: Temporary lockfile snapshot for PR sync
-        run: |
-          printf '%s\n' '__BEGIN_CELLD_LOCK_SYNC__'
-          cat pnpm-lock.yaml
-          printf '%s\n' '__END_CELLD_LOCK_SYNC__'
+      - run: pnpm install --frozen-lockfile
       - run: pnpm check
