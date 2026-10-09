@@ -19,7 +19,7 @@
   "include": [
     "src/api/**/*.ts",
     "src/lib/**/*.ts",
-    "celld/**/*.ts",
+    "scripts/**/*.ts",
     "tests/**/*.ts"
   ]
 }
