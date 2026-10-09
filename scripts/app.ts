@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync } from "node:fs";
 
 import { hasWebApplication, readWebConfig } from "./web-config";
 
@@ -64,6 +64,9 @@ async function main(): Promise<number> {
     if (web) {
       const built = await run("pnpm", ["build:web"]);
       if (built) return built;
+      if (!existsSync("dist/public/index.html")) {
+        throw new Error("Waku did not generate dist/public/index.html");
+      }
       writeFileSync(".wrangler.web.jsonc", JSON.stringify(readWebConfig(), null, 2) + "\n", {
         mode: 0o600,
       });
