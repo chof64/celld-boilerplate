@@ -2,7 +2,7 @@
 
 This document defines the architecture standard implemented by this boilerplate.
 
-The goal is a small, opinionated **backend-only** Celld application shape with sensible defaults for development and production. It is intentionally not a framework on top of Celld.
+The goal is a small, opinionated **API-first** Celld application shape with sensible defaults for development and production. It can optionally ship a client-side SPA, but frontend tooling is never required for the API. It is intentionally not a framework on top of Celld.
 
 ## 1. Shared architecture principles
 
@@ -64,10 +64,10 @@ OpenAPI is not part of the baseline. It can be added when the application has ex
 
 ### Reference chat application
 
-This repository includes a minimal chat application to exercise the architecture rather than merely describe it.
+This repository includes a chat API and Durable Object example, plus an **optional React/Vite client** under `web/`. The browser client consumes the same public endpoints that Flutter and other HTTP/WebSocket clients use.
 
 ```text
-                    Browser
+               Web / mobile client
                       |
           +-----------+-----------+
           |                       |
@@ -315,16 +315,14 @@ Clients must tolerate reconnects. Durable Object ownership can move, and a WebSo
 
 ## 8. Project layout
 
-This is a **backend-only** Celld starter. It does not ship a frontend or static-asset application; use [celld-waku](https://github.com/chof64/celld-waku) for React SSR and full-stack web projects.
-
 ```text
 project/
 ├── celld/
-│   ├── index.ts                 # Worker and Durable Object exports
-│   ├── env.ts                   # Allowed Worker variables + bindings
+│   ├── index.ts                  # Hono Worker and Durable Object exports
+│   ├── env.ts                    # Application variable allowlist + binding types
 │   ├── http/
-│   │   ├── app.ts               # Hono route composition
-│   │   └── routes/              # One named file per public endpoint
+│   │   ├── app.ts                # Explicit Hono API route composition
+│   │   └── routes/
 │   │       ├── health.ts
 │   │       ├── rooms.ts
 │   │       ├── room-messages.ts
@@ -335,16 +333,23 @@ project/
 │   └── scripts/
 │       ├── env.ts
 │       ├── dev.ts
-│       └── deploy.ts
+│       ├── deploy.ts
+│       ├── web-config.ts         # Optional generated assets config
+│       └── deploy-web.ts         # Optional SPA + Hono deploy
+├── web/                           # Isolated, optional client-side React/Vite app
+│   ├── src/
+│   ├── index.html
+│   ├── vite.config.ts
+│   └── package.json
 ├── tests/
-├── wrangler.jsonc
+├── wrangler.jsonc                 # Always API-only, canonical configuration
 ├── .env.example
 ├── .env.prod.example
-├── .dev.vars                    # Generated; ignored
-└── .wrangler.deploy.jsonc      # Generated; ignored
+├── .wrangler.web.jsonc            # Generated and ignored
+└── .wrangler.deploy.jsonc         # Generated and ignored
 ```
 
-Keep this `celld/` namespace consistent with the Waku starter's runtime scripts. Do not add empty `queues/`, `workflows/`, or `features/` directories until needed.
+A backend-only service never installs `web/` dependencies, builds the frontend, or deploys assets. The optional frontend is an ordinary static client and must use the same Hono REST/WebSocket URLs as non-web clients. No Hono-specific client SDK or Waku Server Action is required.
 
 ## 9. Runtime entrypoint
 
@@ -532,30 +537,44 @@ The root location is intentional. Celld resolves project-relative entrypoints, a
 
 The canonical file contains structural configuration and remains free of production secrets.
 
-## 17. Backend development
+## 17. Development
 
-`pnpm dev` and `pnpm dev:celld` start the same Celld backend development runtime. The wrapper validates allowed variables from optional `.env`, writes ignored `.dev.vars`, then executes native `celld dev .`. Persistent local state lives under `.celld/dev`.
+`pnpm dev` and `pnpm dev:celld` remain the **API-only** Celld development runtime. The wrapper validates optional `.env`, writes ignored `.dev.vars`, and invokes native `celld dev .`. Persistent local data lives under `.celld/dev`.
 
-The full-stack sibling uses `pnpm dev` for Waku's own Vite dev server and `pnpm dev:celld` for production-like Celld execution. Both starters keep the Celld command visible.
+The optional `web/` project installs its own React and Vite dependencies independently. `pnpm dev:web` starts Vite on port 5173, proxying `/api/*` and WebSocket upgrades to Hono on port 9876. This keeps browser and mobile clients on the same API contract. No frontend is started during `pnpm dev`.
 
-For an intentional state reset, invoke `celld dev . --clean` directly; no standard `dev:clean` script is added.
+The Waku sibling uses `pnpm dev` for its framework-native Vite/RSC development, and `pnpm dev:celld` for a production-like Celld execution path. Neither starter hides native Celld execution.
 
-## 18. Backend-only HTTP boundary
+For an intentional local reset, invoke `celld dev . --clean` directly.
 
-This repository exposes REST/JSON endpoints and public WebSocket upgrade endpoints through Hono. It **does not** serve an SPA or SSR assets. Its demonstration chat feature is API-only; use curl, a WebSocket client or the Waku frontend to consume it.
+## 18. Hono is API-first, frontend optional
 
-Waku's frontend can call this Worker as an ordinary public API or through a configured service binding for server-to-server calls. Do not introduce a frontend framework into `celld-hono` by default.
+Hono owns the HTTP and WebSocket boundary for browsers, Flutter, partner integrations and internal services. The client-side React chat under `web/` is an example consumer. It shares the exact REST and WebSocket endpoints with mobile clients, and it cannot import server-only Durable Object bindings.
 
-## 19. Asset ownership
+An optional React SPA is not an SSR/React Server Components application. Use the [celld-waku](https://github.com/chof64/celld-waku) starter when server-rendered React and Server Actions materially improve developer velocity. The Hono API remains usable with no frontend whatsoever.
 
-There is no `assets` block in the default Hono `wrangler.jsonc`. Web application assets belong in the [celld-waku](https://github.com/chof64/celld-waku) build output and are published by its own Worker. If a backend feature specifically needs assets, add that binding intentionally.
+See [WEB.md](./WEB.md) for the optional client and both deployment modes.
+
+## 19. Optional static assets and one canonical Wrangler file
+
+The canonical root `wrangler.jsonc` intentionally declares **no** `assets`. The default `pnpm deploy` publishes the API and Durable Objects only.
+
+Opt-in `pnpm deploy:web` builds `web/dist`, derives an ignored `.wrangler.web.jsonc` containing the same Worker identity, bindings and migrations **plus** SPA assets, and calls the same native Celld deployment helper. Celld serves static assets and its `single-page-application` fallback; `run_worker_first` routes `/api/*` and `/health` to Hono. Never maintain a parallel hand-edited Wrangler file.
+
+A later API-only deployment replaces the full application and removes the SPA assets; keep the deployment mode consistent for the fleet. One fleet cannot safely receive independent standalone Hono and Waku publishes.
 
 ## 20. Production deployment
 
-The stable project command is:
+The default API-only project command is:
 
 ```bash
 pnpm deploy
+```
+
+For the optional React SPA and Hono API in the **same Celld application**, use:
+
+```bash
+pnpm deploy:web
 ```
 
 The wrapper ultimately invokes native:
@@ -681,6 +700,12 @@ pnpm typecheck
 pnpm test
 pnpm check
 pnpm deploy
+
+# Optional web client (requires a separate web/ dependency install)
+pnpm dev:web
+pnpm build:web
+pnpm check:web
+pnpm deploy:web
 ```
 
 The Waku sibling also provides framework-native `pnpm build` and `pnpm build:celld` for its React application.
@@ -708,6 +733,8 @@ Use these defaults when adding functionality.
 | Need | Default |
 | --- | --- |
 | Public API endpoint | RESTful HTTP through Hono; one named file per URL, flat by default with optional feature folders |
+| Client-side browser UI, shared with mobile clients | Optional React/Vite SPA in `web/`; use existing Hono APIs |
+| SSR / React Server Components and Server Actions | [celld-waku](https://github.com/chof64/celld-waku) |
 | HTTP validation | Standard Schema + Zod |
 | Internal method-style call to stateful entity | Durable Object RPC |
 | Durable Object HTTP interface | `fetch()` |
@@ -724,9 +751,9 @@ Do not use a Durable Object merely because one is available. Use it when the own
 
 ## 28. What is intentionally not standardized
 
-This backend starter does not select:
+This API-first starter does not mandate:
 
-- a frontend framework (see the Waku sibling),
+- React/Vite or any frontend framework (the `web/` example is optional; see Waku for SSR),
 - ORM,
 - PostgreSQL provider,
 - authentication provider,
