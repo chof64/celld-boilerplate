@@ -1,6 +1,6 @@
 {
   "name": "celld-boilerplate",
-  "main": "./celld/index.ts",
+  "main": "./src/api/index.ts",
   "compatibility_date": "2026-10-01",
   "durable_objects": {
     "bindings": [
