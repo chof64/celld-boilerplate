@@ -10,10 +10,14 @@
   "scripts": {
     "dev": "pnpm dev:celld",
     "dev:celld": "tsx celld/scripts/dev.ts",
+    "dev:web": "pnpm --dir web dev",
+    "build:web": "pnpm --dir web build",
+    "check:web": "pnpm --dir web build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm test",
-    "deploy": "tsx celld/scripts/deploy.ts"
+    "deploy": "tsx celld/scripts/deploy.ts",
+    "deploy:web": "tsx celld/scripts/deploy-web.ts"
   },
   "dependencies": {
     "@hono/standard-validator": "^0.4.0",
