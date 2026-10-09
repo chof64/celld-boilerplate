@@ -28,7 +28,7 @@ if (args[0] === "--") args.shift();
 const withWeb = hasWebApplication();
 
 if (withWeb) {
-  const buildStatus = await run("pnpm", ["--dir", "web", "build"]);
+  const buildStatus = await run("pnpm", ["build:web"]);
   if (buildStatus !== 0) process.exit(buildStatus);
 
   verifyWebBuild();
