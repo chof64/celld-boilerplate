@@ -16,7 +16,7 @@ These principles are intentionally **identical in both Celld starters**. When ch
 6. **Validate and authorize at every trust boundary.** Use Zod as the default schema implementation and Standard Schema where a framework provides a compatible integration. Treat Server Actions as public server entrypoints.
 7. **Make state ownership explicit.** For Xicar, PlanetScale Postgres and application S3 remain authoritative; Celld coordination/cache state is rebuildable unless a feature deliberately establishes a different persistence contract.
 8. **Use one canonical root `wrangler.jsonc`.** It declares binding identities and entrypoints but contains no production secrets. Do not add separate development, staging, or production Wrangler files by default.
-9. **Separate application variables from fleet credentials.** `celld/env.ts` declares the application allowlist; `.env` supplies local values, and process variables override it. CI supplies application values via `ENV_FILE`; Celld bucket, node, and storage credentials remain process/infrastructure settings.
+9. **Separate application variables from fleet credentials.** `src/api/env.ts` declares the application allowlist; `.env` supplies local values, and process variables override it. CI supplies application values via `ENV_FILE`; Celld bucket, node, and storage credentials remain process/infrastructure settings.
 10. **Keep the Celld commands native and visible.** Project scripts may prepare environment and build artifacts, but `celld dev` and `celld deploy` own execution and publication. Do not deploy to Celld with `wrangler deploy`.
 11. **Standardize operations across both starters.** Use the same production GitHub Environment contract, pinned `CELLD_VERSION`, serialized deploys, dry-run before publish, and the same single-node/multi-node/upgrade runbook.
 12. **Protect persistent identities.** Treat Worker names, Durable Object class and binding names, migration tags, service bindings, and storage identities as schema. Append migrations intentionally; do not casually rename live resources.
@@ -99,7 +99,7 @@ The Worker name, Durable Object binding, class, and migration tags must stay sta
 
 ## 6. Environment and persistence
 
-`celld/env.ts` lists application variables that may reach the Worker. `.env` supplies local values; production GitHub Actions uses the `ENV_FILE` secret. Node/fleet/object-store credentials are **never** copied into Worker variables.
+`src/api/env.ts` lists application variables that may reach the Worker. `.env` supplies local values; production GitHub Actions uses the `ENV_FILE` secret. Node/fleet/object-store credentials are **never** copied into Worker variables.
 
 For Xicar, PlanetScale Postgres and application S3 are the long-lived authorities. The example room's Durable Object SQLite demonstrates coordination and a bounded chat history; it does not establish authoritative business-data storage.
 
