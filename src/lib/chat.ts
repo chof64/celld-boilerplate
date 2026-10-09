@@ -16,3 +16,5 @@ export function mergeMessages(
     .sort((a, b) => a.sentAt - b.sentAt || a.id.localeCompare(b.id))
     .slice(-100);
 }
+
+export const rooms = ["lobby", "drivers", "dispatch"] as const;

@@ -14,9 +14,7 @@ writeFileSync(".dev.vars", serializeDevVars(environment), {
   mode: 0o600,
 });
 
-const project = process.env.CELLD_APPLICATION_CONFIG ?? ".";
-
-const child = spawn("celld", ["dev", project], {
+const child = spawn("celld", ["dev", "."], {
   stdio: "inherit",
   env: process.env,
 });

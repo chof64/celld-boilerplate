@@ -2,8 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 
-import { mergeMessages, type ChatMessage } from "../lib/chat";
-import { rooms } from "../lib/rooms";
+import { mergeMessages, rooms, type ChatMessage } from "../lib/chat";
 
 export function ChatApp({ room }: { room: string }) {
   const [name, setName] = useState("Guest");

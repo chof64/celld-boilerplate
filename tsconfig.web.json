@@ -22,8 +22,5 @@
     "src/lib/**/*.ts",
     "src/waku.server.tsx",
     "waku.config.ts"
-  ],
-  "exclude": [
-    "src/api/**"
   ]
 }

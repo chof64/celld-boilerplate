@@ -39,15 +39,18 @@ Requires Node.js 22.15+, pnpm, and the Celld CLI.
 ```sh
 pnpm install --frozen-lockfile
 cp .env.example .env
+pnpm dev:celld
 pnpm dev
 ```
+
+Run the two dev servers in separate terminals:
 
 - **http://127.0.0.1:3000** — Waku frontend with hot reload
 - **http://127.0.0.1:9876** — Celld/Hono REST and WebSocket backend
 
 Waku's development server proxies `/api/*` and `/health` to Hono, including WebSocket upgrades.
 
-`pnpm dev:celld` starts just the backend; `pnpm dev:web` starts just Waku. For a backend-only derivative, remove `src/waku.server.tsx` and `src/pages/`, leaving `src/api/` in place. No deployment flag is needed.
+For a backend-only derivative, remove `src/waku.server.tsx` and `src/pages/`, leaving `src/api/` in place, and prune the web scripts and frontend dependencies. No deployment flag is needed.
 
 ## Build and deploy
 
@@ -72,7 +75,5 @@ curl http://127.0.0.1:9876/api/rooms/lobby/messages
 ```
 
 The Hono Room Durable Object handles SQLite-backed example history and WebSocket broadcasts. This is an **unauthenticated demo**, not production messaging.
-
-For full request-time Waku SSR/RSC, the separate [celld-waku](https://github.com/chof64/celld-waku) project remains an experimental reference; it isn't needed for static Waku + Hono.
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for project conventions and [DEPLOY.md](./DEPLOY.md) for production fleet setup, secrets, upgrades and draining.

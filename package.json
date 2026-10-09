@@ -8,14 +8,13 @@
     "node": ">=22.15"
   },
   "scripts": {
-    "dev": "tsx scripts/app.ts dev",
     "dev:celld": "tsx scripts/dev.ts",
-    "dev:web": "waku dev --host 127.0.0.1",
+    "dev": "waku dev --host 127.0.0.1",
     "build:web": "waku build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "pnpm typecheck && pnpm test && tsx scripts/app.ts check",
-    "deploy": "tsx scripts/app.ts deploy",
+    "check": "pnpm typecheck && pnpm test && pnpm typecheck:web && pnpm build:web",
+    "deploy": "tsx scripts/deploy.ts",
     "typecheck:web": "tsc -p tsconfig.web.json --noEmit"
   },
   "dependencies": {
