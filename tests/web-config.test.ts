@@ -57,7 +57,7 @@ describe("colocated Hono/React source layout", () => {
       not_found_handling: "single-page-application",
       run_worker_first: ["/api/*", "/health"],
     });
-    expect(createWebConfig({ ...wrangler, assets: { directory: "./src" } }))
+    expect(() => createWebConfig({ ...wrangler, assets: { directory: "./src" } }))
       .toThrow("must not expose src/");
     expect(read("src/api/app.ts")).toContain('.route("/", roomMessagesRoute)');
     expect(read("src/api/routes/room/messages.ts")).toContain("/api/rooms/:roomId/messages");
