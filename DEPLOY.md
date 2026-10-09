@@ -628,25 +628,18 @@ Reference: [Diagnose a fleet](https://github.com/denoland/celld/blob/main/docs/R
 
 ---
 
-# Starter-specific verification: Hono API-first (optional React SPA)
+# Starter-specific verification: Hono API-first (automatic optional SPA)
 
-**Default mode: API-only.**
+The **same** `pnpm deploy` command is used for both project layouts, including dry-runs.
 
-- Confirm `pnpm dev`, `pnpm check`, and `pnpm deploy -- --dry-run` require no React/Vite dependencies.
-- Confirm `GET /health` returns JSON and API-only deployment has no default SPA fallback.
-- Confirm Hono chat REST endpoints validate input and call the `Room` Durable Object with native RPC.
-- Confirm WebSocket upgrades reach the `Room` Durable Object and reconnect correctly after a node restart.
+- Without `web/`, install only root dependencies and run `pnpm check` and `pnpm deploy -- --dry-run`. Confirm the resulting Celld application contains no SPA asset binding or fallback.
+- With a valid `web/` project, install its independent dependencies and run the same `pnpm deploy -- --dry-run`. Confirm it builds `web/dist`, includes a generated SPA asset configuration, and preserves Worker name/DO migration identities.
+- A `web/` directory lacking `web/package.json` must fail instead of quietly omitting expected frontend assets.
+- Verify `GET /health` and `GET /api/rooms/lobby/messages` return JSON, not SPA fallback HTML.
+- Confirm `GET /rooms/drivers` refreshes correctly and serves frontend JS/CSS when `web/` exists.
+- Open two chat tabs and verify REST message submission and Durable Object WebSocket notifications.
+- Removing `web/` and redeploying intentionally removes the previous SPA assets because each Celld deploy replaces the full application.
 
-**Opt-in mode: same-origin API + React SPA.**
+Production GitHub Actions checks for `web/` and installs/tests the frontend only when present. It always executes `pnpm deploy -- --dry-run` then `pnpm deploy`. There is **no** `DEPLOY_WEB` toggle or other frontend deployment selector in environment variables, application secrets, or workflow inputs. The shared `ENV_FILE` and Celld fleet credentials contract is unchanged.
 
-- Install the separate `web/` dependencies and run `pnpm check:web`.
-- Run `pnpm deploy:web -- --dry-run`; verify the generated Celld configuration includes `./web/dist`, SPA fallback, and worker-first routes for `/api/*` and `/health`.
-- Confirm `GET /rooms/drivers` refreshes to the SPA, JavaScript/CSS assets load, and `GET /api/rooms/lobby/messages` remains JSON rather than HTML.
-- Open two browser windows, send a message, and verify WebSocket delivery.
-- Switch back to API-only deployment and verify previously published frontend assets are removed.
-- Keep deployed Worker name, Durable Object bindings and migration identities stable in **both** modes.
-
-Production GitHub Actions uses optional GitHub Environment variable `DEPLOY_WEB=true` to select SPA inclusion. Omission defaults to API-only. The same `ENV_FILE` secret and Celld fleet credentials apply to both modes. **Do not** include `DEPLOY_WEB` in application secrets. Never deploy Hono and Waku separately into the same fleet: compose scripts into a single application and publish once.
-
-See [WEB.md](./WEB.md) for local development and deployment commands. For SSR/RSC, use the [celld-waku](https://github.com/chof64/celld-waku) starter.
-
+Keep the two standalone Hono/Waku applications on separate fleets unless composed into **one** application deployment. See [WEB.md](./WEB.md) for the optional frontend and [celld-waku](https://github.com/chof64/celld-waku) for SSR/RSC.
