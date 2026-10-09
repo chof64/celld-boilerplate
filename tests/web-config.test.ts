@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { parse } from "jsonc-parser";
 import { describe, expect, it } from "vitest";
 
-import { createWebConfig, hasWebApplication } from "../celld/scripts/web-config";
+import { createWebConfig, hasWebApplication } from "../scripts/web-config";
 
 describe("optional frontend", () => {
   it("deploys API-only without a web entry, and detects a complete one", () => {
