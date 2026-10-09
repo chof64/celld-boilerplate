@@ -1,18 +1,18 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { parse, type ParseError, printParseErrorCode } from "jsonc-parser";
 
 export const webConfigPath = ".wrangler.web.jsonc";
-export const webDistPath = "web/dist";
+export const webDistPath = "dist";
 
 export function hasWebApplication(root = "."): boolean {
-  const web = join(root, "web");
-  if (!existsSync(web)) return false;
+  const index = existsSync(join(root, "index.html"));
+  const entry = existsSync(join(root, "src/main.tsx"));
 
-  if (!statSync(web).isDirectory() || !existsSync(join(web, "package.json"))) {
-    throw new Error("web/ exists but is not a valid frontend project (missing web/package.json)");
+  if (!index && !entry) return false;
+  if (!index || !entry || !existsSync(join(root, "vite.config.ts"))) {
+    throw new Error("Incomplete web application: expected index.html, src/main.tsx and vite.config.ts");
   }
-
   return true;
 }
 
@@ -23,7 +23,7 @@ export function createWebConfig(config: unknown): Record<string, unknown> {
 
   const root = config as Record<string, unknown>;
   if (root.assets !== undefined) {
-    throw new Error("The canonical wrangler.jsonc must stay API-only; SPA assets are generated when web/ exists");
+    throw new Error("The canonical wrangler.jsonc must not expose src/ as static assets");
   }
   if (typeof root.name !== "string" || typeof root.main !== "string") {
     throw new Error("Expected a Worker name and entrypoint");
@@ -32,7 +32,7 @@ export function createWebConfig(config: unknown): Record<string, unknown> {
   return {
     ...root,
     assets: {
-      directory: "./web/dist",
+      directory: "./dist",
       not_found_handling: "single-page-application",
       run_worker_first: ["/api/*", "/health"],
     },
@@ -52,7 +52,7 @@ export function readWebConfig(): Record<string, unknown> {
 }
 
 export function verifyWebBuild(): void {
-  if (!existsSync(webDistPath + "/index.html")) {
-    throw new Error("Missing web/dist/index.html; run pnpm build:web first");
+  if (!existsSync(join(webDistPath, "index.html"))) {
+    throw new Error("Missing dist/index.html; run pnpm build:web first");
   }
 }
