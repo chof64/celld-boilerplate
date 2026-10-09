@@ -1,36 +1,25 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parse, type ParseError, printParseErrorCode } from "jsonc-parser";
-
-export const webConfigPath = ".wrangler.web.jsonc";
-export const webDistPath = "dist";
+import { parse, type ParseError } from "jsonc-parser";
 
 export function hasWebApplication(root = "."): boolean {
   const index = existsSync(join(root, "index.html"));
   const entry = existsSync(join(root, "src/main.tsx"));
 
-  if (!index && !entry) return false;
-  if (!index || !entry || !existsSync(join(root, "vite.config.ts"))) {
-    throw new Error("Incomplete web application: expected index.html, src/main.tsx and vite.config.ts");
+  if (index !== entry) {
+    throw new Error("A web app requires both index.html and src/main.tsx");
   }
-  return true;
+
+  return index;
 }
 
-export function createWebConfig(config: unknown): Record<string, unknown> {
-  if (!config || typeof config !== "object" || Array.isArray(config)) {
-    throw new Error("Expected a Wrangler configuration object");
-  }
-
-  const root = config as Record<string, unknown>;
-  if (root.assets !== undefined) {
-    throw new Error("The canonical wrangler.jsonc must not expose src/ as static assets");
-  }
-  if (typeof root.name !== "string" || typeof root.main !== "string") {
-    throw new Error("Expected a Worker name and entrypoint");
+export function createWebConfig(config: Record<string, unknown>) {
+  if (config.assets) {
+    throw new Error("Do not serve src/ as static assets; only compiled dist/ is public");
   }
 
   return {
-    ...root,
+    ...config,
     assets: {
       directory: "./dist",
       not_found_handling: "single-page-application",
@@ -39,20 +28,11 @@ export function createWebConfig(config: unknown): Record<string, unknown> {
   };
 }
 
-export function readWebConfig(): Record<string, unknown> {
+export function readWebConfig() {
   const errors: ParseError[] = [];
-  const root = parse(readFileSync("wrangler.jsonc", "utf8"), errors, {
-    allowTrailingComma: true,
-  });
-  if (errors.length > 0) {
-    throw new Error("Invalid wrangler.jsonc: " +
-      errors.map((error) => printParseErrorCode(error.error)).join(", "));
+  const config = parse(readFileSync("wrangler.jsonc", "utf8"), errors);
+  if (errors.length || !config || typeof config !== "object" || Array.isArray(config)) {
+    throw new Error("Invalid wrangler.jsonc");
   }
-  return createWebConfig(root);
-}
-
-export function verifyWebBuild(): void {
-  if (!existsSync(join(webDistPath, "index.html"))) {
-    throw new Error("Missing dist/index.html; run pnpm build:web first");
-  }
+  return createWebConfig(config as Record<string, unknown>);
 }
