@@ -1,40 +1,40 @@
-# Celld + Hono
+# Celld + Hono + Waku
 
-An **API-first** [Celld](https://github.com/denoland/celld) starter with [Hono](https://hono.dev/), Durable Objects and an optional client-side React app. Web, mobile and other clients use the same REST and WebSocket endpoints.
+An **API-first Celld starter** with Hono for REST/WebSockets/Durable Objects and **optional static Waku** for React pages. The browser, mobile apps and integrations all use the same Hono endpoints.
 
-Use [celld-waku](https://github.com/chof64/celld-waku) instead when you need React SSR, RSC or Server Actions. Both starters share [architecture principles](./ARCHITECTURE.md#1-shared-architecture-principles) and [deployment conventions](./SYNC.md).
+Waku lives at the project root, uses `src/pages/` for file-based routing, and **pre-renders every web page at build time**. No Waku server is deployed: Hono remains the only production Worker.
 
-## Structure
+## Layout
 
 ```text
 src/
   api/
-    index.ts                     Celld Worker entry
-    app.ts                       Hono route registration
+    index.ts                  Celld Worker and DO exports
+    app.ts                    Explicit Hono route registration
     routes/
       health.ts
-      room/
-        details.ts               GET /api/rooms/:roomId
-        messages.ts              GET/POST /api/rooms/:roomId/messages
-        socket.ts                WebSocket /api/rooms/:roomId/socket
-        params.ts
-    durable-objects/room.ts
-  lib/chat.ts                    Shared, browser-safe types and helpers
-  app.tsx                        Optional React chat example
-  main.tsx                       Optional client entry
+      room/                   Related Hono routes
+    durable-objects/
+    env.ts                    Worker bindings
+  pages/
+    _layout.tsx               Static Waku layout
+    index.tsx                 Static homepage
+    rooms/[roomId].tsx        Static paths for demo rooms
+  components/chat-app.tsx     Interactive React client
+  lib/                        Shared pure modules
+  waku.server.tsx             Waku static build entry
   styles.css
-scripts/                           Development and deployment helpers
-src/api/env.ts                     Worker bindings and env allowlist
-index.html                       Optional web entry
-vite.config.ts                   Vite and local API proxy
-wrangler.jsonc                   One canonical Celld config
+scripts/                      Dev, build and deploy helpers
+waku.config.ts                Waku/Vite development configuration
+wrangler.jsonc                Canonical Hono Worker config
+package.json
 ```
 
-**`src/api/` is server-only; `src/lib/` is portable.** Files under `src/api/routes/` are grouped for organization, not automatic URL discovery. Each Hono handler defines its full path, and `src/api/app.ts` explicitly registers it.
+**Boundaries:** `src/api/` is server-only. `src/lib/` must remain environment-neutral. `src/pages/` belongs to Waku; `src/api/routes/` belongs to Hono. Waku page URLs follow the file structure; Hono URLs are declared and registered explicitly in `src/api/app.ts`.
 
-## Start
+## Development
 
-Requires Node.js 22.15+, pnpm and the Celld CLI.
+Requires Node.js 22.15+, pnpm, and the Celld CLI.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -42,23 +42,14 @@ cp .env.example .env
 pnpm dev
 ```
 
-With the React example present, `pnpm dev` starts Celld at **http://127.0.0.1:9876** and Vite at **http://127.0.0.1:5173**. Vite proxies `/api` and WebSocket requests to Hono.
+- **http://127.0.0.1:3000** — Waku frontend with hot reload
+- **http://127.0.0.1:9876** — Celld/Hono REST and WebSocket backend
 
-Remove `index.html` and `src/main.tsx` for an **API-only** application. The same `pnpm dev` then starts only Celld; `pnpm check` and `pnpm deploy` skip the frontend. No deployment flag or extra `web/` package is needed.
+Waku's development server proxies `/api/*` and `/health` to Hono, including WebSocket upgrades.
 
-For separate processes, use `pnpm dev:celld` and `pnpm dev:web`.
+`pnpm dev:celld` starts just the backend; `pnpm dev:web` starts just Waku. For a backend-only derivative, remove `src/waku.server.tsx` and `src/pages/`, leaving `src/api/` in place. No deployment flag is needed.
 
-## Chat example
-
-The minimal chat uses REST for history and sending messages, plus a Room Durable Object for WebSocket broadcasts and local SQLite history.
-
-```sh
-curl http://127.0.0.1:9876/api/rooms/lobby/messages
-```
-
-The sample is unauthenticated. Add identity, authorization, abuse controls, and authoritative storage before building production messaging on it.
-
-## Deploy
+## Build and deploy
 
 ```sh
 pnpm check
@@ -66,6 +57,22 @@ pnpm deploy -- --dry-run
 pnpm deploy
 ```
 
-Deployment **automatically builds and includes the frontend** when its entrypoints exist. Celld serves only the compiled `dist/` assets—not raw `src/`, which contains backend code. With no frontend, only Hono and Durable Objects deploy. Removing frontend source and redeploying removes its previously published assets.
+If Waku pages exist, `pnpm deploy` runs `waku build` and adds the generated `dist/public` assets to the **same Celld application** as the Hono Worker. Without Waku pages, it deploys only Hono.
 
-GitHub Actions uses `ENV_FILE` for allowlisted application variables; fleet/object-store credentials stay separate. See [DEPLOY.md](./DEPLOY.md) for production nodes, secrets, draining and upgrades, and [ARCHITECTURE.md](./ARCHITECTURE.md) for conventions.
+Static output includes prerendered HTML, client bundles **and Waku RSC payloads**. Celld serves these files as emitted. We deliberately **do not use SPA fallback**, and only compiled `dist/public` is published, never `src/api/` or other source code.
+
+Static pages run server-side during the **build**, not per request. Dynamic route parameters need `staticPaths`, as demonstrated by the room pages. Browser interactions and dynamic data use normal Hono REST/WebSocket endpoints. Request-time Waku SSR, Server Actions and Waku API handlers are **not** part of this static-only deployment.
+
+## Example
+
+The chat has three static pages (`/`, `/rooms/drivers`, and `/rooms/dispatch`), while its room messages are live:
+
+```sh
+curl http://127.0.0.1:9876/api/rooms/lobby/messages
+```
+
+The Hono Room Durable Object handles SQLite-backed example history and WebSocket broadcasts. This is an **unauthenticated demo**, not production messaging.
+
+For full request-time Waku SSR/RSC, the separate [celld-waku](https://github.com/chof64/celld-waku) project remains an experimental reference; it isn't needed for static Waku + Hono.
+
+See [ARCHITECTURE.md](./ARCHITECTURE.md) for project conventions and [DEPLOY.md](./DEPLOY.md) for production fleet setup, secrets, upgrades and draining.
