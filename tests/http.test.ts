@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Env } from "../celld/env";
+import type { Env } from "../src/api/env";
 import { app } from "../src/api/app";
 
 describe("HTTP API", () => {
