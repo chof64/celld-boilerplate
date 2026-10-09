@@ -64,7 +64,7 @@ OpenAPI is not part of the baseline. It can be added when the application has ex
 
 ### Reference chat application
 
-This repository includes a chat API and Durable Object example, plus an **optional React/Vite client** under `web/`. The browser client consumes the same public endpoints that Flutter and other HTTP/WebSocket clients use.
+This repository includes a chat API and Durable Object example, plus an **optional React/Vite client** in top-level `src/` files. The browser client consumes the same public endpoints that Flutter and other HTTP/WebSocket clients use.
 
 ```text
                Web / mobile client
@@ -317,96 +317,58 @@ Clients must tolerate reconnects. Durable Object ownership can move, and a WebSo
 
 ```text
 project/
+├── src/
+│   ├── api/
+│   │   ├── index.ts              # Worker and Durable Object exports
+│   │   ├── app.ts                # Explicit Hono route registration
+│   │   ├── routes/
+│   │   │   ├── health.ts
+│   │   │   └── room/
+│   │   │       ├── details.ts
+│   │   │       ├── messages.ts
+│   │   │       ├── socket.ts
+│   │   │       └── params.ts
+│   │   └── durable-objects/room.ts
+│   ├── lib/chat.ts               # Browser-safe contracts
+│   ├── main.tsx                  # Optional React entrypoint
+│   ├── app.tsx                   # Optional UI
+│   └── styles.css
 ├── celld/
-│   ├── index.ts                  # Hono Worker and Durable Object exports
-│   ├── env.ts                    # Application variable allowlist + binding types
-│   ├── http/
-│   │   ├── app.ts                # Explicit Hono API route composition
-│   │   └── routes/
-│   │       ├── health.ts
-│   │       ├── rooms.ts
-│   │       ├── room-messages.ts
-│   │       ├── room-socket.ts
-│   │       └── room-params.ts
-│   ├── durable-objects/
-│   │   └── room.ts
-│   └── scripts/
-│       ├── env.ts
-│       ├── dev.ts
-│       ├── deploy.ts
-│       ├── web-config.ts         # Optional generated assets config
-│       └── deploy-app.ts         # Automatically deploy API or API + SPA
-├── web/                           # Isolated, optional client-side React/Vite app
-│   ├── src/
-│   ├── index.html
-│   ├── vite.config.ts
-│   └── package.json
+│   ├── env.ts                    # Worker bindings and env allowlist
+│   └── scripts/                  # Celld dev, build and deployment
+├── index.html                    # Optional browser entry
+├── vite.config.ts                # Optional Vite configuration
+├── tsconfig.web.json
 ├── tests/
-├── wrangler.jsonc                 # Always API-only, canonical configuration
-├── .env.example
-├── .env.prod.example
-├── .wrangler.web.jsonc            # Generated and ignored
-└── .wrangler.deploy.jsonc         # Generated and ignored
+├── wrangler.jsonc                # Canonical config, no raw src assets
+└── .wrangler.web.jsonc           # Generated for deployments with a frontend
 ```
 
-A service without `web/` never installs frontend dependencies, builds the frontend, or deploys assets. The optional frontend is an ordinary static client and must use the same Hono REST/WebSocket URLs as non-web clients. No Hono-specific client SDK or Waku Server Action is required.
+The root is one package, not a nested `web/` workspace. Without browser entrypoints, the same project works as an API-only service. `src/api/` must never enter a browser bundle; `src/lib/` contains only portable schemas, types and pure transformations.
 
 ## 9. Runtime entrypoint
 
-`celld/index.ts` should remain boring.
-
-Its purpose is runtime composition:
-
-```text
-celld/index.ts
-  |
-  +-- default.fetch -> Hono
-  +-- exported Durable Object classes
-  +-- queue handler, when added
-  +-- scheduled handler, when added
-  +-- other Celld runtime exports, when added
-```
-
-Business logic should not accumulate in the entrypoint.
+`src/api/index.ts` exports the Hono application as the default Worker handler and names any Durable Object classes. It should remain a small composition module. Celld's canonical `main` is `./src/api/index.ts`; no React code belongs in that entry.
 
 ## 10. Feature organization
 
-**One endpoint URL, one descriptively named Hono route file.** All HTTP methods on that URL belong in the same file. Start with flat files under `celld/http/routes/`; if many related files become difficult to navigate, optionally move them into a resource or feature folder. Do not mirror URL segments with directories or create generic `route.ts` files solely to express the URL.
+**One descriptive file per endpoint URL**, with all methods for that URL together. Related endpoint files may be grouped under folders such as `src/api/routes/room/`; folders are for navigation only, not file-based routing.
 
 ```text
-celld/http/
-├── app.ts
-└── routes/
-    ├── health.ts
-    ├── rooms.ts
-    ├── room-messages.ts
-    ├── room-socket.ts
-    └── room-params.ts
+src/api/
+  app.ts
+  routes/
+    health.ts
+    room/
+      details.ts        GET /api/rooms/:roomId
+      messages.ts       GET/POST /api/rooms/:roomId/messages
+      socket.ts         WebSocket /api/rooms/:roomId/socket
+      params.ts         Shared route parameter validation
 ```
 
-A route module exports a chained `new Hono<{ Bindings: Env }>().get("/full/url", ...).post("/full/url", ...)` sub-app. In `celld/http/app.ts`, import and compose every module with chained `.route("/", subApp)` calls. This uses normal Hono routing, **not** automatic filesystem routing, and preserves the optional typed client's `AppType` inference.
+Each Hono module declares its **full public path**, and `src/api/app.ts` imports and mounts it explicitly via chained `.route("/", subApp)` calls. No Next.js-style filesystem discovery is involved; moving a file never changes a public URL by itself.
 
-Share input schemas in small adjacent files like `room-params.ts`, and keep domain logic independent of HTTP so Hono, Queues, Workflows, and Durable Objects can call it. Do not move transport-specific handlers or business implementations into `app.ts`.
-
-#### Optional organization as the API grows
-
-Grouping related files into a folder is supported without changing routing behavior. For example, when the flat `room-*.ts` files and `rooms.ts` outgrow the top-level route directory:
-
-```text
-celld/http/routes/
-├── health.ts
-└── room/
-    ├── details.ts      # GET /api/rooms/:roomId
-    ├── messages.ts     # GET/POST /api/rooms/:roomId/messages
-    ├── socket.ts       # GET /api/rooms/:roomId/socket
-    └── params.ts       # shared schema
-```
-
-Keep each sub-app's **full public Hono URL** and continue to import/mount each sub-app in `celld/http/app.ts` using chained `.route("/", ...)`. Moving a module only requires updating its import in `app.ts` and any relative imports between route files (such as `./params`). The folder name does not add an HTTP path prefix or automatically register endpoints, and there is no need to add a new route-group layer. Keep the same endpoint tests and run `pnpm check` after reorganizing.
-
-Avoid a default hierarchy of generic `controllers/`, `services/`, `repositories/`, and `models/`. For larger features, group reusable domain code under `celld/features/<feature>/`, independently of whether their HTTP routes remain flat or use an optional folder. Do not create empty feature directories upfront.
-
-See [README.md](./README.md#hono-route-files-default) for the implemented convention and adding a route, and [Hono route grouping](https://hono.dev/docs/api/routing#grouping-without-changing-base).
+Server-only business modules belong in `src/api/`. Share only pure, environment-neutral contracts or transformations through `src/lib/`. Client modules may import `src/lib/` but must never import `src/api/`. No default controller/service/repository hierarchy is required.
 
 ## 11. Validation
 
@@ -539,47 +501,29 @@ The canonical file contains structural configuration and remains free of product
 
 ## 17. Development
 
-`pnpm dev` and `pnpm dev:celld` remain the **API-only** Celld development runtime. The wrapper validates optional `.env`, writes ignored `.dev.vars`, and invokes native `celld dev .`. Persistent local data lives under `.celld/dev`.
+`pnpm dev` automatically launches native Celld for Hono and, when a frontend exists, Vite for client-side React with HMR. `pnpm dev:celld` runs only Celld on port 9876; `pnpm dev:web` runs only Vite on port 5173. Vite proxies `/api/*` and WebSocket upgrades to Hono so browser and mobile clients share the same public interfaces.
 
-The optional `web/` project installs its own React and Vite dependencies independently. `pnpm dev:web` starts Vite on port 5173, proxying `/api/*` and WebSocket upgrades to Hono on port 9876. This keeps browser and mobile clients on the same API contract. No frontend is started during `pnpm dev`.
+Frontend presence is determined by root `index.html` and `src/main.tsx`. Missing one of the expected frontend files causes a clear error. Ordinary dev never clears `.celld/dev` state.
 
-The Waku sibling uses `pnpm dev` for its framework-native Vite/RSC development, and `pnpm dev:celld` for a production-like Celld execution path. Neither starter hides native Celld execution.
+## 18. Shared source seam
 
-For an intentional local reset, invoke `celld dev . --clean` directly.
+`src/api/` is server-only: Hono, Worker bindings, Durable Objects, privileged operations and secrets. Root `src/` React files are client-side. `src/lib/` contains only shared portable schemas, types and pure functions; it must not import `src/api/`, `cloudflare:workers`, Node-only or browser-only APIs.
 
-## 18. Hono is API-first, frontend optional
+This permits safe code reuse without merging public UI logic with privileged server behavior. For RSC, SSR and Server Actions, prefer the [celld-waku](https://github.com/chof64/celld-waku) starter.
 
-Hono owns the HTTP and WebSocket boundary for browsers, Flutter, partner integrations and internal services. The client-side React chat under `web/` is an example consumer. It shares the exact REST and WebSocket endpoints with mobile clients, and it cannot import server-only Durable Object bindings.
+## 19. Optional compiled assets and canonical Wrangler
 
-An optional React SPA is not an SSR/React Server Components application. Use the [celld-waku](https://github.com/chof64/celld-waku) starter when server-rendered React and Server Actions materially improve developer velocity. The Hono API remains usable with no frontend whatsoever.
+`wrangler.jsonc` points to `./src/api/index.ts` and contains **no** static assets by default. `pnpm deploy` detects browser entrypoints, builds the Vite frontend to `dist/` when present and derives an ignored `.wrangler.web.jsonc` retaining the same Worker/DO identity while adding SPA asset fallback and Worker-first `/api/*` routing. Without a frontend, it deploys Hono alone.
 
-See [WEB.md](./WEB.md) for the optional client. The same deploy command works whether or not that directory exists.
-
-## 19. Optional static assets and one canonical Wrangler file
-
-The canonical root `wrangler.jsonc` intentionally declares **no** `assets`. The single `pnpm deploy` command inspects the repository layout. With no `web/`, it publishes the API and Durable Objects only. With a `web/` project, it automatically builds `web/dist`, derives an ignored `.wrangler.web.jsonc` containing the same Worker identity, bindings and migrations **plus** SPA assets, and invokes the same native Celld deployment helper. An incomplete `web/` fails explicitly, rather than silently excluding it.
-
-Celld serves static assets with `single-page-application` fallback, while `run_worker_first` routes `/api/*` and `/health` to Hono. Never maintain a parallel hand-edited Wrangler file. Removing `web/` from the repository and redeploying replaces the application without those assets. One fleet cannot safely receive independent standalone Hono and Waku publishes.
+**Never expose `./src` as the static assets directory.** It contains `src/api/` server code. Only compiled Vite `./dist` assets are served. Removing frontend files and redeploying intentionally removes previously deployed SPA assets.
 
 ## 20. Production deployment
-
-The only project deployment command is:
 
 ```bash
 pnpm deploy
 ```
 
-If `web/` exists, the command automatically includes the compiled client-side SPA; otherwise it deploys Hono alone.
-
-The wrapper ultimately invokes native:
-
-```text
-celld deploy
-```
-
-It does not use `wrangler deploy`.
-
-Wrangler describes the application. Celld owns deployment.
+This one command packages the frontend when present and then executes native `celld deploy` using the same environment allowlist as API-only projects. It never calls `wrangler deploy` and never requires separate deployment flags.
 
 ## 21. Production Worker variables
 
@@ -685,39 +629,19 @@ How Celld binaries are distributed or upgraded is infrastructure-specific and ou
 
 ## 26. Command surface
 
-The boilerplate intentionally keeps commands small:
-
 ```text
-pnpm dev
-pnpm dev:celld
-pnpm typecheck
-pnpm test
-pnpm check
-pnpm deploy
-
-# Optional web client (requires a separate web/ dependency install)
-pnpm dev:web
-pnpm build:web
-pnpm check:web
+pnpm dev             Celld API plus optional Vite client
+pnpm dev:celld       Native Celld only
+pnpm dev:web         Vite only
+pnpm typecheck       API and portable lib types
+pnpm typecheck:web   Browser-side TypeScript
+pnpm test            API, environment and layout tests
+pnpm check           Tests plus client build if present
+pnpm build:web       Compile React to dist/
+pnpm deploy          One Celld application, frontend auto-detected
 ```
 
-The Waku sibling also provides framework-native `pnpm build` and `pnpm build:celld` for its React application.
-
-Avoid baseline commands such as:
-
-```text
-dev:clean
-dev:fleet
-dev:all
-deploy:dev
-deploy:staging
-deploy:beta
-deploy:prod
-preview
-doctor
-```
-
-until a real workflow requires them.
+The Waku sibling retains its framework-specific RSC/SSR build commands.
 
 ## 27. Decision guide
 
@@ -726,7 +650,7 @@ Use these defaults when adding functionality.
 | Need | Default |
 | --- | --- |
 | Public API endpoint | RESTful HTTP through Hono; one named file per URL, flat by default with optional feature folders |
-| Client-side browser UI, shared with mobile clients | Optional React/Vite SPA in `web/`; use existing Hono APIs |
+| Client-side browser UI, shared with mobile clients | Optional React/Vite SPA in `src/`; use existing Hono APIs |
 | SSR / React Server Components and Server Actions | [celld-waku](https://github.com/chof64/celld-waku) |
 | HTTP validation | Standard Schema + Zod |
 | Internal method-style call to stateful entity | Durable Object RPC |
@@ -746,7 +670,7 @@ Do not use a Durable Object merely because one is available. Use it when the own
 
 This API-first starter does not mandate:
 
-- React/Vite or any frontend framework (the `web/` example is optional; see Waku for SSR),
+- SSR/RSC tooling or Server Actions (the client-side React UI is optional; see Waku for SSR),
 - ORM,
 - PostgreSQL provider,
 - authentication provider,
