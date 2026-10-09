@@ -9,10 +9,10 @@ This document has **identical contents** in [celld-hono](https://github.com/chof
 | `ARCHITECTURE.md` | The 13 numbered **Shared architecture principles** and sibling table must match word-for-word | Hono HTTP/DO implementation vs Waku React/SSR/RSC design |
 | `DEPLOY.md` | Node topology, fleet security, upgrades, drain, CI, environment settings, and deployment instructions must match | App-specific test/checklist appendix |
 | `.github/workflows/deploy.yml` | Same triggers, production Environment, `ENV_FILE`, Celld version, credentials, dry-run, serialized deploy | Hono automatically builds a frontend from root `index.html` + `src/main.tsx` when present; Waku builds React by default. Hono uses a frozen root lockfile; Waku's build/lockfile policy is framework-specific |
-| `celld/scripts/env.ts` | Same `.env` overlay, allowlist, and `.dev.vars` serialization | None; keep source identical |
-| `celld/scripts/dev.ts` | Same native `celld dev` launcher with an optional config path | Waku prepares/builds its frontend and passes generated `.wrangler.celld.jsonc` |
-| `celld/scripts/deploy.ts` | Same temporary `.wrangler.deploy.jsonc` and native `celld deploy` wrapper with optional source config | Waku prepares a generated `.wrangler.celld.jsonc` from the canonical file |
-| `celld/env.ts` | Same `workerEnvironment.required/optional` contract | Binding types differ (`ROOM` for Hono, `ASSETS` for Waku) |
+| `scripts/env.ts` | Same `.env` overlay, allowlist, and `.dev.vars` serialization | None; keep source identical |
+| `scripts/dev.ts` | Same native `celld dev` launcher with an optional config path | Waku prepares/builds its frontend and passes generated `.wrangler.celld.jsonc` |
+| `scripts/deploy.ts` | Same temporary `.wrangler.deploy.jsonc` and native `celld deploy` wrapper with optional source config | Waku prepares a generated `.wrangler.celld.jsonc` from the canonical file |
+| `src/api/env.ts` | Same `workerEnvironment.required/optional` contract | Binding types differ (`ROOM` for Hono, `ASSETS` for Waku) |
 | `.env.example`, `.env.prod.example` | Same application variable shape and examples | Add app-specific keys intentionally |
 | `wrangler.jsonc` | One root configuration, stable binding names, no secrets | Hono's `main` points to `src/api/index.ts` and it derives `.wrangler.web.jsonc` only for compiled `dist/` assets; Waku uses its source Worker entry for Vite and derives a Celld bundle config |
 | Project scripts | `pnpm dev`, `pnpm dev:celld`, `pnpm check`, `pnpm deploy` | Hono's `pnpm dev` runs Celld plus Vite when browser source exists; `pnpm deploy` auto-detects compiled frontend. Waku has `pnpm build`, `pnpm build:celld` and `pnpm env:local` |
@@ -25,7 +25,7 @@ When changing a shared convention:
 
 1. Review the counterpart repository's implementation before editing.
 2. Apply equivalent changes in **both repositories**, without forcing Waku to mimic Hono routing or Hono to require a frontend.
-3. Keep the shared `ARCHITECTURE.md` principles and the fleet runbook prefix identical. Keep `celld/scripts/env.ts`, `dev.ts` and `deploy.ts` identical whenever possible.
+3. Keep the shared `ARCHITECTURE.md` principles and the fleet runbook prefix identical. Keep `scripts/env.ts`, `dev.ts` and `deploy.ts` identical whenever possible.
 4. Update the workflows, docs and tests together; note unavoidable differences in both PR descriptions.
 5. Run `pnpm check` in each repository, then build and test on an actual Celld runtime for runtime-related changes.
 6. Never rename persistent Worker/binding identities casually when syncing repository names.
