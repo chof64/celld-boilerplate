@@ -31,75 +31,71 @@ These principles are intentionally **identical in both Celld starters**. When ch
 
 They share **deployment, environment, security, and architectural principles**, not identical framework source code. Hono's optional web client does not change its API-first contract; API-only derivatives can remove browser entrypoints and prune frontend dependencies. They may coexist as separate Worker scripts **only when composed into one Celld application deployment**, connected by service bindings. Independently deploying each starter to the same fleet replaces its current application; it does not merge scripts.
 
-## 2. Project layout
+## 2. Source layout
 
 ```text
 src/
   api/
-    index.ts                  Worker entry, Durable Object exports
-    app.ts                    Explicit Hono route composition
+    index.ts                Celld Worker entry and Durable Object exports
+    app.ts                  Explicit Hono route registration
+    env.ts                  Allowed Worker environment and bindings
     routes/
       health.ts
-      room/
-        details.ts
-        messages.ts
-        socket.ts
-        params.ts
-    durable-objects/room.ts
-  lib/chat.ts                 Portable contracts and pure helpers
-  app.tsx                     Optional browser React UI
-  main.tsx                    Optional browser entry
+      room/                 Related REST and WebSocket routes
+    durable-objects/
+  pages/
+    _layout.tsx             Waku static layout
+    index.tsx               Build-time rendered home
+    rooms/[roomId].tsx      Build-time paths for known demo rooms
+  components/chat-app.tsx   Hydrated React client
+  lib/                      Environment-neutral shared code
+  waku.server.tsx           Waku static adapter
   styles.css
-scripts/                       Dev/deploy helpers
-src/api/env.ts                 Worker binding types and env allowlist
-index.html                    Optional browser entry
-vite.config.ts                Optional client dev/build config
-wrangler.jsonc                Canonical Worker config
+scripts/                    Celld env, dev, build and deployment helpers
+waku.config.ts              Waku/Vite dev configuration
+wrangler.jsonc              Hono Worker configuration
 ```
 
-There is **one root package**. Remove `index.html` and `src/main.tsx` for an API-only project; `pnpm dev`, `pnpm check`, and `pnpm deploy` will skip the browser. Frontend dependencies can also be pruned from an API-only derivative.
+`src/api/` is **server-only**. `src/lib/` contains pure schemas/types and cross-platform operations; it must not import secrets, Worker bindings, Node-only or browser-only dependencies.
 
-## 3. Source boundaries
+## 3. Routes and rendering
 
-- **`src/api/` — server only.** Hono handlers, Durable Objects, bindings, and privileged logic live here. The Celld Worker entry is `src/api/index.ts`.
-- **`src/lib/` — portable shared code.** Types, validation schemas, and pure functions may be imported by both browser and Worker code. Never import secrets, `cloudflare:workers`, Node modules, or browser globals here.
-- **Top-level `src/` — optional React.** A client-side SPA that calls the same REST/WebSocket endpoints as Flutter and other clients. It never imports from `src/api/`.
+Hono routes use one descriptive file per endpoint URL, optionally grouped into folders. They define their full URL and are **explicitly mounted** in `src/api/app.ts`. The source filesystem doesn't change their public paths.
 
-## 4. Hono routing convention
+Waku pages are different: `src/pages/` **is** the file router. Pages and layouts render **statically by default**. A dynamic segment such as `rooms/[roomId].tsx` declares `staticPaths` to emit each known URL during `waku build`. The chat client is a `"use client"` component; it gets live data through Hono REST and WebSocket endpoints.
 
-Use **one descriptively named file per endpoint URL**, with all its HTTP methods together. Group related files into a folder when useful, such as `routes/room/`. This is **not filesystem routing**: route handlers define full public URLs themselves, and `src/api/app.ts` imports and registers each sub-app explicitly with `.route("/", subApp)`.
+Waku server actions, dynamic API routes and per-request rendering are intentionally **not** supported in this static deployment. Request-time backend work belongs to Hono; we do not build or deploy a second Waku Worker.
 
-```ts
-// src/api/app.ts
-export const app = new Hono<{ Bindings: Env }>()
-  .route("/", healthRoute)
-  .route("/", roomRoute)
-  .route("/", roomMessagesRoute)
-  .route("/", roomSocketRoute);
-```
-
-HTTP handlers validate input using Zod + Standard Schema. Use Durable Object RPC for internal methods and `fetch()` for WebSocket upgrades. The included chat is a reference example, not a production messaging service.
-
-## 5. Development and deployment
+## 4. Build and deployment
 
 ```sh
-pnpm install --frozen-lockfile
-pnpm dev                  # Celld, plus Vite when browser entrypoints exist
-pnpm check                # API tests + optional browser checks/build
-pnpm deploy -- --dry-run
-pnpm deploy
+pnpm dev                # Hono + Waku dev when the frontend exists
+pnpm dev:celld          # Hono only
+pnpm dev:web            # Waku only
+pnpm check              # API tests, Waku typecheck and static build
+pnpm deploy             # Hono with optional static Waku files
 ```
 
-For separate processes, use `pnpm dev:celld` (port 9876) or `pnpm dev:web` (port 5173). Vite proxies `/api` and WebSocket connections to Celld.
+The canonical `wrangler.jsonc` keeps `main: "./src/api/index.ts"` and the original Durable Object class/binding/migration identities. The deployment script detects the Waku entry and builds `dist/public`, then derives a temporary asset config containing:
 
-The only hand-maintained Wrangler config is root `wrangler.jsonc`. For the optional frontend, deployment generates a temporary config with `assets.directory = "./dist"`, SPA fallback, and Worker-first routes for `/api/*` and `/health`. **Never publish `src/` as static assets:** it contains private `src/api/` source. Only the compiled Vite `dist/` is public.
+```json
+{
+  "assets": {
+    "directory": "./dist/public",
+    "html_handling": "drop-trailing-slash",
+    "run_worker_first": ["/api/*", "/health"]
+  }
+}
+```
 
-The Worker name, Durable Object binding, class, and migration tags must stay stable across deployments. Removing the browser and redeploying removes its assets; one fleet requires one composed application publisher.
+Celld serves prerendered HTML, JavaScript, CSS and **Waku RSC payloads** from that directory. Do not enable SPA fallback or publish raw `src/`: static pages need their real generated paths, and `src/api/` contains server code. Hono handles REST, WebSockets and every other nonstatic request.
 
-## 6. Environment and persistence
+Removing `src/waku.server.tsx` and `src/pages/` turns the starter into an API-only application. No mode flag, second Wrangler config, or second production Worker is required. Every Celld deploy replaces the application; removing the web source also removes its published assets.
 
-`src/api/env.ts` lists application variables that may reach the Worker. `.env` supplies local values; production GitHub Actions uses the `ENV_FILE` secret. Node/fleet/object-store credentials are **never** copied into Worker variables.
+## 5. Environment and persistence
 
-For Xicar, PlanetScale Postgres and application S3 are the long-lived authorities. The example room's Durable Object SQLite demonstrates coordination and a bounded chat history; it does not establish authoritative business-data storage.
+`src/api/env.ts` defines the string variables allowed into the Worker; `scripts/env.ts` loads local `.env`. Production GitHub Actions uses the `ENV_FILE` secret, separate from Celld fleet/object-store credentials.
 
-Use [DEPLOY.md](./DEPLOY.md) for fleet topology, environment setup, node draining and upgrades. Use [SYNC.md](./SYNC.md) to keep common conventions aligned with [celld-waku](https://github.com/chof64/celld-waku), which is optimized for server-rendered React instead of API-first clients.
+For Xicar, PlanetScale Postgres and application S3 remain authoritative. Durable Objects handle entity-local coordination and rebuildable state unless a feature deliberately establishes another persistence contract.
+
+See [DEPLOY.md](./DEPLOY.md) for single-node/multi-node operation, upgrades and draining. The sibling [celld-waku](https://github.com/chof64/celld-waku) starter remains available for exploring dynamic SSR/RSC and Server Actions, but is not required for static Waku + Hono.
