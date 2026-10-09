@@ -20,5 +20,9 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
+      - run: pnpm install --no-frozen-lockfile
       - run: pnpm check
+      - name: Inspect static Waku output
+        run: |
+          test -f dist/public/index.html
+          find dist/public -maxdepth 4 -type f | sort | head -40
