@@ -34,7 +34,10 @@ export function ChatApp() {
         const response = await fetch(messagesUrl(room));
         if (!response.ok) throw new Error("Could not load messages");
         const data = (await response.json()) as { messages: ChatMessage[] };
-        if (active) setMessages((current) => mergeMessages(current, data.messages));
+        if (active) {
+          setMessages((current) => mergeMessages(current, data.messages));
+          setError("");
+        }
       } catch {
         if (active) setError("Chat is unavailable. Check that Celld is running.");
       }
@@ -47,10 +50,12 @@ export function ChatApp() {
       setStatus("Connecting…");
 
       socket.onopen = () => {
+        if (!active) return;
         setStatus("Live");
         void loadHistory();
       };
       socket.onmessage = (event) => {
+        if (!active) return;
         try {
           const data = JSON.parse(event.data) as { type: string; message: ChatMessage };
           if (data.type === "message" && data.message?.id) {
