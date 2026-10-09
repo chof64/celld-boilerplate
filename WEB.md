@@ -2,7 +2,7 @@
 
 `celld-hono` is an **API-first starter**. Its optional `web/` React/Vite chat is an ordinary client of the **same REST/WebSocket API** used by mobile apps and external consumers. For SSR/RSC and Server Actions, use [celld-waku](https://github.com/chof64/celld-waku).
 
-The deployment convention is deliberately simple: **`pnpm deploy` automatically includes `web/` when it exists, otherwise deploys the backend alone.** No `DEPLOY_WEB` variable, dedicated web deploy command, or manually maintained alternative Wrangler file is needed.
+The deployment convention is deliberately simple: **`pnpm deploy` automatically includes `web/` when it exists, otherwise deploys the backend alone.** No dedicated web deployment command, environment selector, or manually maintained alternative Wrangler file is needed.
 
 ## Development
 
