@@ -22,7 +22,19 @@ jobs:
           cache: pnpm
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm check
-      - name: Inspect static Waku output
+      - name: Verify Waku prerendered routes and RSC payloads
         run: |
-          test -f dist/public/index.html
-          find dist/public -maxdepth 4 -type f | sort | head -40
+          test -s dist/public/index.html
+          test -s dist/public/rooms/drivers/index.html
+          test -s dist/public/rooms/dispatch/index.html
+          test -s dist/public/RSC/R/_root.txt
+          test -s dist/public/RSC/R/rooms/drivers.txt
+          test -s dist/public/RSC/R/rooms/dispatch.txt
+          wc -c dist/public/index.html dist/public/rooms/drivers/index.html
+          head -c 360 dist/public/index.html
+          echo
+      - name: Temporary pnpm lockfile snapshot
+        run: |
+          echo __BEGIN_CELLD_WAKU_LOCK__
+          cat pnpm-lock.yaml
+          echo __END_CELLD_WAKU_LOCK__
