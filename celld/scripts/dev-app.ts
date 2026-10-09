@@ -27,7 +27,7 @@ await new Promise<void>((resolve) => {
       process.exitCode = 1;
       stopOthers();
     });
-    child.on("exit", (code, signal) => {
+    child.on("close", (code, signal) => {
       if (!shuttingDown) {
         process.exitCode = code ?? (signal ? 1 : 0);
         stopOthers();
