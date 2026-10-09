@@ -8,20 +8,22 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm dev:celld",
+    "dev": "tsx celld/scripts/dev-app.ts",
     "dev:celld": "tsx celld/scripts/dev.ts",
-    "dev:web": "pnpm --dir web dev",
-    "build:web": "pnpm --dir web build",
-    "check:web": "pnpm --dir web build",
+    "dev:web": "vite --host 127.0.0.1",
+    "build:web": "vite build",
     "typecheck": "tsc --noEmit",
+    "typecheck:web": "tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
-    "check": "pnpm typecheck && pnpm test",
+    "check": "pnpm typecheck && pnpm test && tsx celld/scripts/check-app.ts",
     "deploy": "tsx celld/scripts/deploy-app.ts"
   },
   "dependencies": {
     "@hono/standard-validator": "^0.4.0",
     "hono": "^4.13.13",
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261007.1",
@@ -31,6 +33,10 @@
     "jsonc-parser": "^3.3.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "@vitejs/plugin-react": "^6.1.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "vite": "^8.3.4"
   }
 }
