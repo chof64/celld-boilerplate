@@ -46,5 +46,8 @@
     "socials": {
       "github": "https://github.com/chof64/celld-boilerplate"
     }
+  },
+  "fonts": {
+    "family": "Inter"
   }
 }
