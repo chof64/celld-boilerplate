@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
+  "theme": "willow",
   "name": "chof64/celld-boilerplate",
   "colors": {
     "primary": "#16A34A",
